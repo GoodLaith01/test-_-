@@ -3,3 +3,4 @@ build/
 preview/f*.jpg
 figma-src/check_*.jpg
 render.log
+__pycache__/
