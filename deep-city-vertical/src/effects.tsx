@@ -1,5 +1,6 @@
 import React from "react";
 import { random } from "remotion";
+import { FPS, H, W } from "./rig";
 
 export const COLORS = {
   navy: "#041726",
@@ -7,21 +8,7 @@ export const COLORS = {
   gold: "#FFC46B",
 };
 
-export const W = 1080;
-export const H = 1920;
-// Figma keyframes are 864x1536 (served as 2x upscales; coordinates stay in 864 units).
-export const SRC_W = 864;
-export const SRC_H = 1536;
-
-/** Camera: transform for a SRC_W x SRC_H layer so that (cx, cy) is centred at zoom z. */
-export const camera = (cx: number, cy: number, z: number) => {
-  const zz = Math.max(z, W / SRC_W, H / SRC_H);
-  const hw = W / 2 / zz;
-  const hh = H / 2 / zz;
-  const x = Math.min(Math.max(cx, hw), SRC_W - hw);
-  const y = Math.min(Math.max(cy, hh), SRC_H - hh);
-  return { tx: W / 2 - zz * x, ty: H / 2 - zz * y, z: zz };
-};
+export { FPS, H, SRC_H, SRC_W, W } from "./rig";
 
 /* ------------------------------------------------------------------ god rays */
 export const GodRays: React.FC<{
@@ -32,7 +19,7 @@ export const GodRays: React.FC<{
   opacity?: number;
   seed: string;
 }> = ({ frame, sun, count = 16, length = 2200, opacity = 0.5, seed }) => {
-  const t = frame / 30;
+  const t = frame / FPS;
   return (
     <>
       {new Array(count).fill(0).map((_, i) => {
@@ -73,7 +60,7 @@ export const Bubbles: React.FC<{
   bursts: [number, number][]; // [startSecond, count]
   seed: string;
 }> = ({ frame, mouth, bursts, seed }) => {
-  const t = frame / 30;
+  const t = frame / FPS;
   const items: React.ReactNode[] = [];
   bursts.forEach(([t0, n], b) => {
     for (let j = 0; j < n; j++) {
@@ -144,7 +131,7 @@ export type Lane = {
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export const Traffic: React.FC<{ frame: number; lanes: Lane[] }> = ({ frame, lanes }) => {
-  const t = frame / 30;
+  const t = frame / FPS;
   const lights: React.ReactNode[] = [];
   for (const L of lanes) {
     for (let i = 0; i < L.n; i++) {
@@ -161,6 +148,20 @@ export const Traffic: React.FC<{ frame: number; lanes: Lane[] }> = ({ frame, lan
       const toward = v < 0;
       const core = toward ? "rgba(255,244,220,1)" : "rgba(255,70,55,1)";
       const glow = toward ? "rgba(255,236,200,0.75)" : "rgba(255,40,30,0.75)";
+      lights.push(
+        <div
+          key={`${k}streak`}
+          style={{
+            position: "absolute",
+            left: x - rad * 9,
+            top: y - Math.max(0.35, rad * 0.18),
+            width: rad * 18,
+            height: Math.max(0.7, rad * 0.36),
+            background: "linear-gradient(to right, rgba(110,200,255,0), rgba(150,215,255,0.55), rgba(110,200,255,0))",
+            opacity: 0.55 * fade,
+          }}
+        />
+      );
       for (const sgn of [-1, 1]) {
         lights.push(
           <div
@@ -192,7 +193,7 @@ export const Particles: React.FC<{
   gain?: number;
   count?: number;
 }> = ({ frame, cam, focus = 3, gain = 1, count = 320 }) => {
-  const t = frame / 30;
+  const t = frame / FPS;
   const box = [18, 24, 13.4];
   const lo = [-9, -12, 0.6];
   const f = 1100;
@@ -231,15 +232,18 @@ export const Particles: React.FC<{
 };
 
 /* ------------------------------------------------------------------ finishing overlays */
-export const Grain: React.FC<{ frame: number }> = ({ frame }) => (
-  <svg width={W} height={H} style={{ position: "absolute", inset: 0, opacity: 0.11, mixBlendMode: "overlay" }}>
-    <filter id={`g${frame}`}>
-      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves={2} seed={frame} stitchTiles="stitch" />
-      <feColorMatrix type="saturate" values="0" />
-    </filter>
-    <rect width="100%" height="100%" filter={`url(#g${frame})`} />
-  </svg>
-);
+export const Grain: React.FC<{ frame: number }> = ({ frame }) => {
+  const seed = Math.floor(frame);
+  return (
+    <svg width={W} height={H} style={{ position: "absolute", inset: 0, opacity: 0.11, mixBlendMode: "overlay" }}>
+      <filter id={`grain${seed}`}>
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves={2} seed={seed} stitchTiles="stitch" />
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+      <rect width="100%" height="100%" filter={`url(#grain${seed})`} />
+    </svg>
+  );
+};
 
 export const Vignette: React.FC = () => (
   <div

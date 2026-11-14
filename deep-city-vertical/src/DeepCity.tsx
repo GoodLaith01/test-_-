@@ -1,75 +1,39 @@
 import "@fontsource/montserrat/300.css";
 import "@fontsource/montserrat/600.css";
+import { CameraMotionBlur } from "@remotion/motion-blur";
 import React from "react";
-import {
-  AbsoluteFill,
-  Audio,
-  Easing,
-  Img,
-  interpolate,
-  Sequence,
-  staticFile,
-  useCurrentFrame,
-} from "remotion";
-import {
-  Bubbles,
-  camera,
-  COLORS,
-  GodRays,
-  Grain,
-  Lane,
-  Particles,
-  polyline,
-  SRC_H,
-  SRC_W,
-  Traffic,
-  Vignette,
-  W,
-} from "./effects";
+import { AbsoluteFill, Audio, Easing, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { Bubbles, COLORS, GodRays, Grain, Lane, Particles, polyline, Traffic, Vignette } from "./effects";
+import { Cam, clamp01, DURATION, FPS, shotCamera, SHOTS, smooth, SRC_H, SRC_W, stageTransform, W } from "./rig";
 
-export const FPS = 30;
-export const DURATION = 15 * FPS; // 450 frames
+export { DURATION, FPS };
+export const TITLE_IN = Math.round(10.5 * FPS);
 
-// Scene timing (frames). Keyframes: Figma-generated, 864x1536 source units.
-export const DIVE_END = 162; // dive sinks into deep navy by 5.4 s
-export const CITY_START = 140; // over-the-shoulder city reveal from 4.7 s
-export const CITY_END = 302;
-export const STREET_START = 275; // street level from 9.2 s
-export const TITLE_IN = 315; // 10.5 s
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const ramp = (f: number, a: number, b: number) => clamp01((f - a) / (b - a));
 
-const ease = Easing.bezier(0.45, 0, 0.25, 1);
-const k = (f: number, inp: number[], out: number[]) =>
-  interpolate(f, inp, out, { easing: ease, extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-const lin = (f: number, inp: number[], out: number[]) =>
-  interpolate(f, inp, out, { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+/** A SRC_W x SRC_H stage seen through the camera; children are placed in source units. */
+const Stage: React.FC<{ cam: Cam; children: React.ReactNode; filter?: string }> = ({ cam, children, filter }) => (
+  <div
+    style={{
+      position: "absolute",
+      width: SRC_W,
+      height: SRC_H,
+      transformOrigin: "0 0",
+      transform: stageTransform(cam),
+      filter,
+    }}
+  >
+    {children}
+  </div>
+);
 
-/** A SRC_W x SRC_H stage moved by the camera; children are placed in source units. */
-const Stage: React.FC<{ cx: number; cy: number; z: number; children: React.ReactNode; filter?: string }> = ({
-  cx,
-  cy,
-  z,
-  children,
-  filter,
-}) => {
-  const c = camera(cx, cy, z);
-  return (
-    <div
-      style={{
-        position: "absolute",
-        width: SRC_W,
-        height: SRC_H,
-        transformOrigin: "0 0",
-        transform: `translate(${c.tx}px, ${c.ty}px) scale(${c.z})`,
-        filter,
-      }}
-    >
-      {children}
-    </div>
-  );
-};
-
-const Plate: React.FC<{ src: string }> = ({ src }) => (
-  <Img src={staticFile(src)} style={{ position: "absolute", left: 0, top: 0, width: SRC_W, height: SRC_H }} />
+/** Background layer with optional depth-of-field blur (in source px). */
+const Plate: React.FC<{ src: string; blur?: number; children?: React.ReactNode }> = ({ src, blur = 0, children }) => (
+  <div style={{ position: "absolute", inset: 0, filter: blur > 0.05 ? `blur(${blur}px)` : undefined }}>
+    <Img src={staticFile(src)} style={{ position: "absolute", left: 0, top: 0, width: SRC_W, height: SRC_H }} />
+    {children}
+  </div>
 );
 
 /** Foreground swimmer: scales about an anchor (nearer than the background -> parallax). */
@@ -79,14 +43,16 @@ const Swimmer: React.FC<{
   anchor: [number, number];
   scale: number;
   shift: [number, number];
+  blur?: number;
   children?: React.ReactNode;
-}> = ({ src, box, anchor, scale, shift, children }) => (
+}> = ({ src, box, anchor, scale, shift, blur = 0, children }) => (
   <div
     style={{
       position: "absolute",
       inset: 0,
       transformOrigin: `${anchor[0]}px ${anchor[1]}px`,
       transform: `translate(${shift[0]}px, ${shift[1]}px) scale(${scale})`,
+      filter: blur > 0.05 ? `blur(${blur}px)` : undefined,
     }}
   >
     <Img
@@ -97,41 +63,52 @@ const Swimmer: React.FC<{
   </div>
 );
 
-/* ------------------------------------------------------------------ Scene A: the dive */
+/** Teal shadows / warm highlights, like a film grade. */
+const Grade: React.FC = () => (
+  <AbsoluteFill
+    style={{
+      background: "linear-gradient(to bottom, rgba(0,150,190,0.22), rgba(0,90,140,0.08) 45%, rgba(255,170,90,0.14))",
+      mixBlendMode: "soft-light",
+    }}
+  />
+);
+
+/* ------------------------------------------------------------------ Shot 1: the dive */
 const DiveScene: React.FC = () => {
   const f = useCurrentFrame();
   const t = f / FPS;
-  // push in on his face, then tilt down past his hands to the city glowing below
-  const z = k(f, [0, 85, DIVE_END], [1.25, 1.42, 1.72]);
-  const cy = k(f, [0, 85, DIVE_END], [768, 690, 980]);
-  const cx = 432;
-  // he swims toward the lens, then rushes into it: his dark body fills the frame as a wipe
-  const rush = interpolate(f, [92, DIVE_END], [0, 1], {
-    easing: Easing.in(Easing.cubic),
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const manScale = lin(f, [0, 92], [1, 1.1]) + rush * 3.4;
-  // keep his chest near the frame centre while the camera tilts down past him
-  const bob: [number, number] = [3 * Math.sin(t * 1.3), 3 * Math.sin(t * 1.9 + 1) + rush * 150];
-  const sink = 2.0 * t + Math.max(0, t - 3.0) ** 2 * 1.4;
-  const deep = lin(f, [128, DIVE_END], [0, 1]);
+  const shot = SHOTS.dive;
+  const cam = shotCamera(f, shot);
+  const s = clamp01(f / shot.end);
+  // he swims toward the lens, then rushes into it (too close to focus -> defocus)
+  const rush = Math.pow(ramp(s, 0.6, 1), 3);
+  const manScale = 1 + 0.16 * s + 3.3 * rush;
+  const shift: [number, number] = [3 * Math.sin(t * 1.3), 3 * Math.sin(t * 1.9 + 1) + 150 * rush];
+  const sink = 2.0 * t + Math.max(0, t - 2.8) ** 2 * 1.5;
+  const deep = smooth(ramp(s, 0.8, 1));
   return (
     <AbsoluteFill>
-      <Stage cx={cx} cy={cy} z={z} filter="saturate(1.04) contrast(1.04)">
-        <Plate src="dive_plate.jpg" />
-        <GodRays frame={f} sun={[600, -160]} seed="dive" opacity={0.45} length={1500} count={14} />
-        <Swimmer src="dive_man.png" box={[137, 0, 711, 1032]} anchor={[430, 640]} scale={manScale} shift={bob}>
-          <Bubbles frame={f} mouth={[432, 585]} bursts={[[0.1, 14], [1.4, 12], [2.7, 15], [3.9, 12]]} seed="db" />
+      <Stage cam={cam} filter="saturate(1.06) contrast(1.06)">
+        <Plate src="dive_plate.jpg" blur={0.9} />
+        <GodRays frame={f} sun={[600, -160]} seed="dive" opacity={0.5} length={1500} count={14} />
+        <Swimmer
+          src="dive_man.png"
+          box={[137, 0, 711, 1032]}
+          anchor={[430, 640]}
+          scale={manScale}
+          shift={shift}
+          blur={rush * 7}
+        >
+          <Bubbles frame={f} mouth={[432, 578]} bursts={[[0.1, 14], [1.4, 12], [2.7, 15], [3.5, 12]]} seed="db" />
         </Swimmer>
       </Stage>
       <Particles frame={f} cam={[0, sink, 0]} focus={2.5} gain={0.9} />
-      <AbsoluteFill style={{ background: COLORS.navy, opacity: deep * 0.9 }} />
+      <AbsoluteFill style={{ background: COLORS.navy, opacity: deep * 0.92 }} />
     </AbsoluteFill>
   );
 };
 
-/* ------------------------------------------------------------------ Scene B: over-the-shoulder city reveal */
+/* ------------------------------------------------------------------ Shot 2: over-the-shoulder city reveal */
 const CITY_LANES: Lane[] = (() => {
   const big = polyline([[330, 820], [450, 862], [560, 920], [650, 980], [740, 1040], [830, 1115], [870, 1152]]);
   const low = polyline([[355, 1110], [500, 1120], [620, 1150], [720, 1200], [800, 1250], [870, 1302]]);
@@ -147,33 +124,37 @@ const CITY_LANES: Lane[] = (() => {
 })();
 
 const CityScene: React.FC = () => {
-  const f = useCurrentFrame() + CITY_START; // absolute frame
+  const shot = SHOTS.city;
+  const f = useCurrentFrame() + shot.start; // absolute frame
   const t = f / FPS;
-  // crane up from his shoulder and the traffic bridges to the towers
-  const z = k(f, [CITY_START, CITY_END], [1.6, 1.3]);
-  const cx = k(f, [CITY_START, CITY_END], [300, 470]);
-  const cy = k(f, [CITY_START, CITY_END], [1110, 650]);
-  const p = lin(f, [CITY_START, CITY_END], [0, 1]);
-  const manScale = 1 + 0.14 * p;
-  const shift: [number, number] = [4 * Math.sin(t * 1.2), 22 * p + 3 * Math.sin(t * 1.7)];
-  const fog = lin(f, [CITY_START, 185], [1, 0]);
+  const cam = shotCamera(f, shot);
+  const s = ramp(f, shot.start, shot.end);
+  // rack focus: from his head to the city
+  const pull = smooth(ramp(s, 0.1, 0.45));
+  const plateBlur = lerp(2.4, 0, pull);
+  const manBlur = lerp(0, 2.8, pull);
+  const manScale = 1 + 0.12 * s;
+  const shift: [number, number] = [4 * Math.sin(t * 1.2), 30 * s + 3 * Math.sin(t * 1.7)];
+  const appear = smooth(ramp(f, shot.start, shot.start + 18));
+  const fog = 1 - smooth(ramp(f, shot.start, shot.start + 48));
   return (
-    <AbsoluteFill>
-      <Stage cx={cx} cy={cy} z={z} filter="saturate(1.05) contrast(1.04)">
-        <Plate src="city_plate.jpg" />
-        <Traffic frame={f} lanes={CITY_LANES} />
-        <GodRays frame={f} sun={[430, -260]} seed="city" opacity={0.32} length={1500} count={16} />
-        <Swimmer src="city_man.png" box={[0, 888, 369, 1536]} anchor={[190, 1000]} scale={manScale} shift={shift}>
-          <Bubbles frame={f} mouth={[300, 985]} bursts={[[5.0, 8], [6.6, 9], [8.2, 8]]} seed="cb" />
+    <AbsoluteFill style={{ opacity: appear }}>
+      <Stage cam={cam} filter="saturate(1.06) contrast(1.06)">
+        <Plate src="city_plate.jpg" blur={plateBlur}>
+          <Traffic frame={f} lanes={CITY_LANES} />
+        </Plate>
+        <GodRays frame={f} sun={[430, -260]} seed="city" opacity={0.34} length={1500} count={16} />
+        <Swimmer src="city_man.png" box={[0, 888, 369, 1536]} anchor={[190, 1000]} scale={manScale} shift={shift} blur={manBlur}>
+          <Bubbles frame={f} mouth={[300, 985]} bursts={[[4.6, 8], [6.3, 9], [8.0, 8]]} seed="cb" />
         </Swimmer>
       </Stage>
-      <Particles frame={f} cam={[0.3 * p, -3.5 * p, 1.5 * p + 0.15 * t]} focus={3.2} gain={0.7} />
-      <AbsoluteFill style={{ background: COLORS.navy, opacity: fog * 0.9 }} />
+      <Particles frame={f} cam={[0.3 * s, -3.5 * s, 1.5 * s + 0.15 * t]} focus={3.2} gain={0.7} />
+      <AbsoluteFill style={{ background: COLORS.navy, opacity: fog * 0.85 }} />
     </AbsoluteFill>
   );
 };
 
-/* ------------------------------------------------------------------ Scene C: street level + title */
+/* ------------------------------------------------------------------ Shot 3: street level */
 const STREET_LANES: Lane[] = (() => {
   const left = polyline([[490, 1185], [523, 1108]]);
   const right = polyline([[572, 1185], [540, 1108]]);
@@ -184,36 +165,41 @@ const STREET_LANES: Lane[] = (() => {
 })();
 
 const StreetScene: React.FC = () => {
-  const f = useCurrentFrame() + STREET_START;
+  const shot = SHOTS.street;
+  const f = useCurrentFrame() + shot.start;
   const t = f / FPS;
-  // slow push up the avenue, tilting up to the towers and swimmers
-  const z = k(f, [STREET_START, DURATION], [1.3, 1.52]);
-  const cx = k(f, [STREET_START, DURATION], [440, 470]);
-  const cy = k(f, [STREET_START, DURATION], [1060, 640]);
-  const p = lin(f, [STREET_START, DURATION], [0, 1]);
-  const fadeIn = lin(f, [STREET_START, STREET_START + 27], [0, 1]);
+  const cam = shotCamera(f, shot);
+  const s = ramp(f, shot.start, shot.end);
+  const appear = smooth(ramp(f, shot.start, shot.start + 26));
+  const focusIn = lerp(1.6, 0, smooth(ramp(s, 0, 0.3)));
   return (
-    <AbsoluteFill style={{ opacity: fadeIn }}>
-      <Stage cx={cx} cy={cy} z={z} filter="saturate(1.05) contrast(1.04)">
-        <Plate src="street.jpg" />
-        <Traffic frame={f} lanes={STREET_LANES} />
-        <GodRays frame={f} sun={[560, -220]} seed="street" opacity={0.3} length={1500} count={12} />
+    <AbsoluteFill style={{ opacity: appear }}>
+      <Stage cam={cam} filter="saturate(1.06) contrast(1.06)">
+        <Plate src="street.jpg" blur={focusIn}>
+          <Traffic frame={f} lanes={STREET_LANES} />
+        </Plate>
+        <GodRays frame={f} sun={[560, -220]} seed="street" opacity={0.32} length={1500} count={12} />
       </Stage>
-      <Particles frame={f} cam={[0.2 * p, -2.2 * p, 2.5 * p + 0.15 * t]} focus={3.0} gain={0.6} />
+      <Particles frame={f} cam={[0.2 * s, -2.2 * s, 2.5 * s + 0.15 * t]} focus={3.0} gain={0.6} />
     </AbsoluteFill>
   );
 };
 
 /* ------------------------------------------------------------------ Title */
 const Title: React.FC = () => {
-  const f = useCurrentFrame(); // relative to TITLE_IN
-  const a1 = interpolate(f, [0, 30], [0, 1], { extrapolateRight: "clamp" });
-  const a2 = interpolate(f, [12, 48], [0, 1], { extrapolateRight: "clamp" });
-  const spread1 = interpolate(f, [0, 90], [0.9, 0.55], { easing: Easing.out(Easing.cubic), extrapolateRight: "clamp" });
-  const spread2 = interpolate(f, [12, 100], [0.34, 0.16], { easing: Easing.out(Easing.cubic), extrapolateRight: "clamp" });
-  const line = interpolate(f, [30, 75], [0, 1], { easing: Easing.out(Easing.cubic), extrapolateRight: "clamp" });
-  const rise = interpolate(f, [12, 60], [26, 0], { easing: Easing.out(Easing.cubic), extrapolateRight: "clamp" });
-  const glow = 0.55 + 0.15 * Math.sin(f / 9);
+  const t = useCurrentFrame() / FPS; // seconds since TITLE_IN
+  const io = (a: number, b: number, from: number, to: number, ease = Easing.out(Easing.cubic)) =>
+    interpolate(t, [a, b], [from, to], { easing: ease, extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const a1 = io(0, 1.0, 0, 1);
+  const a2 = io(0.4, 1.6, 0, 1);
+  const spread1 = io(0, 3.0, 0.9, 0.55);
+  const spread2 = io(0.4, 3.3, 0.34, 0.16);
+  const line = io(1.0, 2.5, 0, 1);
+  const rise = io(0.4, 2.0, 26, 0);
+  const glow = 0.55 + 0.15 * Math.sin(t * 2.6);
+  // anamorphic light sweep across the title
+  const sweep = io(1.0, 2.4, -0.3, 1.3, Easing.inOut(Easing.sin));
+  const sweepA = Math.sin(clamp01((t - 1.0) / 1.4) * Math.PI) * 0.85;
   return (
     <AbsoluteFill style={{ fontFamily: "Montserrat", alignItems: "center" }}>
       <div
@@ -265,33 +251,72 @@ const Title: React.FC = () => {
           }}
         />
       </div>
+      {/* light sweep */}
+      <div
+        style={{
+          position: "absolute",
+          top: 300 + 175,
+          left: sweep * W - 450,
+          width: 900,
+          height: 10,
+          background: "linear-gradient(to right, rgba(160,235,255,0), rgba(220,250,255,0.95), rgba(160,235,255,0))",
+          filter: "blur(4px)",
+          opacity: sweepA,
+          mixBlendMode: "screen",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: 300 + 80,
+          left: sweep * W - 160,
+          width: 320,
+          height: 200,
+          background: "radial-gradient(ellipse at center, rgba(180,240,255,0.55), rgba(180,240,255,0) 70%)",
+          opacity: sweepA * 0.8,
+          mixBlendMode: "screen",
+        }}
+      />
     </AbsoluteFill>
   );
 };
 
 /* ------------------------------------------------------------------ Main composition */
-export const DeepCity: React.FC = () => {
+const Picture: React.FC = () => {
   const f = useCurrentFrame();
-  const fadeIn = interpolate(f, [0, 14], [1, 0], { extrapolateRight: "clamp" });
-  const fadeOut = interpolate(f, [DURATION - 24, DURATION - 1], [0, 1], { extrapolateLeft: "clamp" });
   return (
     <AbsoluteFill style={{ background: COLORS.navy, overflow: "hidden" }}>
-      <Sequence durationInFrames={DIVE_END + 5}>
+      <Sequence durationInFrames={SHOTS.dive.end + 2}>
         <DiveScene />
       </Sequence>
-      <Sequence from={CITY_START} durationInFrames={CITY_END - CITY_START}>
+      <Sequence from={SHOTS.city.start} durationInFrames={SHOTS.city.end - SHOTS.city.start + 12}>
         <CityScene />
       </Sequence>
-      <Sequence from={STREET_START}>
+      <Sequence from={SHOTS.street.start}>
         <StreetScene />
       </Sequence>
+      <Grade />
       <Sequence from={TITLE_IN}>
         <Title />
       </Sequence>
       <Vignette />
       <Grain frame={f} />
+    </AbsoluteFill>
+  );
+};
+
+export const DeepCity: React.FC = () => {
+  const f = useCurrentFrame();
+  const fadeIn = interpolate(f, [0, 12], [1, 0], { extrapolateRight: "clamp" });
+  const fadeOut = interpolate(f, [DURATION - 20, DURATION - 1], [0, 1], { extrapolateLeft: "clamp" });
+  return (
+    <AbsoluteFill style={{ background: "#000" }}>
+      <CameraMotionBlur shutterAngle={180} samples={6}>
+        <Picture />
+      </CameraMotionBlur>
       <AbsoluteFill style={{ background: "#000", opacity: Math.max(fadeIn, fadeOut) }} />
       <Audio src={staticFile("soundtrack_15s.wav")} />
     </AbsoluteFill>
   );
 };
+

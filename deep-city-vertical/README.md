@@ -1,7 +1,7 @@
 # The Deep City — vertical (1080×1920, 15 s) · Remotion
 
 **Final video:** [`out/the_deep_city_vertical.mp4`](out/the_deep_city_vertical.mp4)
-(1080×1920, 30 fps, 15 s, H.264 + AAC)
+(1080×1920, 24 fps, 15 s, H.264 + AAC)
 
 On-screen text: **THE DEEP CITY**. Palette: abyss navy `#041726`, glowing cyan `#5CE1FF`, warm gold `#FFC46B`.
 
@@ -14,21 +14,33 @@ On-screen text: **THE DEEP CITY**. Palette: abyss navy `#041726`, glowing cyan `
 | 9.2–15 s | Street | Street level: people walking, cars, swimmers overhead. The camera tilts up the avenue. |
 | from 10.5 s | Title | "THE DEEP" (gold) and "CITY" (glowing cyan) with a gold rule; chime; fade to black. |
 
+## Camera
+
+`src/rig.ts` drives a cinematic virtual camera:
+- each shot follows a smooth spline path with a soft ease, so it never stops or jerks mid-shot
+- a low-frequency "operator float" adds drift, a slight roll and a breathing zoom, like a camera held by a diver
+- the paths are chosen so the frame never leaves the image. `npx tsx scripts/check-camera.ts`
+  verifies this for every frame and also checks smoothness
+- focus pulls: from the man to the city in shot 2, focus settling in at the start of shot 3, and a defocus as he rushes into the lens
+- 180° motion blur (`@remotion/motion-blur`, 6 samples) at 24 fps
+
 ## Structure
 
-- `src/DeepCity.tsx`: scenes, camera moves, title, audio
-- `src/effects.tsx`: god rays, bubbles, highway and bridge traffic, 3D marine snow, grain, vignette
+- `src/rig.ts`: camera paths, float, and per-shot timing
+- `src/DeepCity.tsx`: scenes, focus pulls, grade, title with light sweep, audio
+- `src/effects.tsx`: god rays, bubbles, traffic lights with anamorphic streaks, 3D marine snow, grain, vignette
 - `figma-src/`: the three photoreal 864×1536 keyframes generated with Figma's image generator
   (`gpt-image-2.5-sunburst`): `dive.png`, `city.png`, `street.png`
 - `scripts/prep_figma.py`: upscales them 2× and cuts out the man (background plate + transparent cut-out) into `public/`
 - `public/`: the prepared layers plus `soundtrack_15s.wav`
-- `scripts/audio15.py`: synthesizes the 15 s soundtrack
+- `scripts/audio15.py`: synthesizes the 15 s soundtrack: drone into a major chord, bubbles, a whoosh into the lens, an impact at the reveal, a riser and a chime for the title
 
 ## Commands
 
 ```bash
 npm install
 python3 scripts/prep_figma.py figma-src public           # rebuild layers from the Figma keyframes
+npx tsx scripts/check-camera.ts                       # verify camera bounds and smoothness
 npx remotion studio                                   # live preview
 python3 scripts/audio15.py public/soundtrack_15s.wav  # rebuild the soundtrack
 npx remotion render DeepCity out/the_deep_city_vertical.mp4

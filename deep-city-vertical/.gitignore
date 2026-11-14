@@ -2,3 +2,4 @@ node_modules/
 build/
 preview/f*.jpg
 figma-src/check_*.jpg
+render.log

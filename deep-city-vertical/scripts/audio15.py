@@ -62,8 +62,8 @@ L += stereo(brown * swell * 0.16, 0.5)
 
 # 3. Breath bubbles in sync with the picture's bubble bursts.
 bub = np.zeros(N)
-for t0, n, vol in [(0.1, 14, 1.0), (1.4, 12, 0.9), (2.7, 15, 1.0), (3.9, 12, 0.8),
-                   (5.0, 8, 0.4), (6.6, 9, 0.4), (8.2, 8, 0.35)]:
+for t0, n, vol in [(0.1, 14, 1.0), (1.4, 12, 0.9), (2.7, 15, 1.0), (3.5, 12, 0.8),
+                   (4.6, 8, 0.4), (6.3, 9, 0.4), (8.0, 8, 0.35)]:
     for j in range(n):
         ts = t0 + j * rng.uniform(0.03, 0.09) + rng.uniform(0, 0.05)
         f0 = rng.uniform(380, 1200)
@@ -97,21 +97,21 @@ dark = pad([note(38), note(45), note(53)], bright=700)                     # D2 
 wonder = pad([note(38), note(45), note(54), note(57), note(64), note(69)], bright=2600)  # D maj add9
 shimmer = sum(np.sin(2 * np.pi * note(m) * t) * (0.5 + 0.5 * np.sin(2 * np.pi * r * t))
               for m, r in [(81, 0.9), (86, 1.3), (88, 0.7), (93, 1.1)]) / 4
-music = dark * env(0.2, 5.4, 1.6, 1.0) * 0.55
-music += wonder * env(4.6, 15.0, 2.0, 1.6) * 0.75
-music += shimmer * env(5.6, 15.0, 2.5, 1.8) * 0.05
+music = dark * env(0.2, 4.7, 1.6, 0.9) * 0.55
+music += wonder * env(4.2, 15.0, 2.0, 1.6) * 0.75
+music += shimmer * env(5.2, 15.0, 2.5, 1.8) * 0.05
 L += stereo(music * 3.2, 0.35)
 
 # 5. Sub boom on the reveal cut.
-tb = np.clip(t - 4.9, 0, None)
-boom = np.sin(2 * np.pi * (52 * tb - 6 * tb * tb)) * np.exp(-tb / 0.9) * (t >= 4.9)
-boom += lp(rng.standard_normal(N), 160) * np.exp(-tb / 0.35) * (t >= 4.9) * 0.6
+tb = np.clip(t - 4.45, 0, None)
+boom = np.sin(2 * np.pi * (52 * tb - 6 * tb * tb)) * np.exp(-tb / 0.9) * (t >= 4.45)
+boom += lp(rng.standard_normal(N), 160) * np.exp(-tb / 0.35) * (t >= 4.45) * 0.6
 L += stereo(boom * 0.5, 0.0)
 
 # 6. Distant city: low hum + soft traffic swish.
 hum = (np.sin(2 * np.pi * 58 * t) * 0.4 + np.sin(2 * np.pi * 116 * t) * 0.15) * (0.8 + 0.2 * np.sin(2 * np.pi * 0.5 * t))
 swish = bp(rng.standard_normal(N), 180, 900) * (0.6 + 0.4 * np.sin(2 * np.pi * 0.35 * t + 2))
-L += stereo((hum * 0.2 + swish * 0.25) * env(5.0, 15, 2.0, 1.4), 0.8)
+L += stereo((hum * 0.2 + swish * 0.25) * env(4.6, 15, 2.0, 1.4), 0.8)
 
 # 6b. Title chime at 10.5 s: soft inharmonic bell (D6 family).
 tc = np.clip(t - 10.5, 0, None)
@@ -119,6 +119,24 @@ chime = sum(a * np.sin(2 * np.pi * fr * tc) * np.exp(-tc / d)
             for fr, a, d in [(1174.7, 1.0, 1.6), (1761.0, 0.5, 1.1), (2349.3, 0.35, 0.8), (3227.0, 0.18, 0.5)]) * (t >= 10.5)
 chime *= np.clip(tc / 0.004, 0, 1)
 L += stereo(chime * 0.12, 0.5)
+
+# 6c. Whoosh as he rushes into the lens (3.0-4.45 s): band of noise sweeping up, cut on the impact.
+wn = rng.standard_normal(N)
+wsh = np.zeros(N)
+for a, b, lo_f, hi_f in [(3.0, 3.5, 200, 700), (3.5, 3.9, 350, 1300), (3.9, 4.2, 600, 2400), (4.2, 4.45, 900, 4000)]:
+    i0, i1 = int(a * SR), int(b * SR)
+    wsh[i0:i1] = bp(wn, lo_f, hi_f, 2)[i0:i1]
+wsh *= np.clip((t - 3.0) / 1.45, 0, 1) ** 2.2 * (t < 4.45)
+L += stereo(wsh * 0.55, 0.7)
+
+# 6d. Riser into the title (9.0-10.5 s) and a soft sweep with the light streak (11.5-12.9 s).
+rs = np.clip((t - 9.0) / 1.5, 0, 1) * (t < 10.5)
+riser = bp(rng.standard_normal(N), 1500, 7000, 2) * rs ** 2.5 * 0.35
+riser += np.sin(2 * np.pi * np.cumsum(220 + 660 * rs ** 2) / SR) * rs ** 3 * 0.08
+L += stereo(riser, 0.6)
+sw = np.clip((t - 11.5) / 1.4, 0, 1)
+sweep = bp(rng.standard_normal(N), 3000, 9000, 2) * np.sin(np.pi * sw) ** 2 * (t >= 11.5) * (t < 12.9) * 0.12
+L += stereo(sweep, 0.9)
 
 # 7. Reverb: exponentially decaying noise IR, per channel.
 ir_len = int(SR * 2.6)
