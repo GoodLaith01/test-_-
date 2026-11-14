@@ -1,11 +1,4 @@
 node_modules/
 build/
-preview/f170.jpg
-preview/f20.jpg
-preview/f200.jpg
-preview/f240.jpg
-preview/f300.jpg
-preview/f360.jpg
-preview/f435.jpg
-preview/f95.jpg
+preview/f*.jpg
 figma-src/check_*.jpg
