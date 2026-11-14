@@ -6,7 +6,8 @@ Outputs (in public/, 2x the 864x1536 source = 1728x3072 canvas units):
   dive_man.webm    the diver with alpha: flutter kick, arm strokes, hair moving in the water
   city_man.webm    the man over the city with alpha: breathing and a slight head turn
 
-Usage: PPHUMANSEG=<pphumanseg.onnx> python3 scripts/animate_layers.py <lama.onnx> [street|dive|city ...]
+Usage: PPHUMANSEG=<pphumanseg.onnx> MPPOSE=<pose_estimation_mediapipe.onnx> \
+       python3 scripts/animate_layers.py <lama.onnx> [street|dive|city ...]
 """
 import math
 import subprocess
@@ -17,6 +18,7 @@ import numpy as np
 
 sys.path.insert(0, "scripts")
 from actors import SKY_ACTORS, STREET_ACTORS, segment  # noqa: E402
+from gait import Walker, detect_pose, reflection_layer  # noqa: E402
 from lama import inpaint  # noqa: E402
 
 LAMA = sys.argv[1]
@@ -160,38 +162,78 @@ def swimmer_frame(sp, t):
 
 
 # ------------------------------------------------------------------ street layer
+def reflection_mask(m, ground_y, depth):
+    """Where a person's mirror image lies on the wet road (1x coords)."""
+    out = np.zeros_like(m)
+    g = int(ground_y)
+    n = min(int(depth), m.shape[0] - g - 1, g)
+    if n > 0:
+        out[g:g + n] = m[g - n:g][::-1]
+    return out
+
+
 def bake_street(n_frames):
     img = cv2.imread("figma-src/street.png")
     actors = SKY_ACTORS + STREET_ACTORS
     masks = {a["name"]: segment(img, a) for a in actors}
+    poses = {a["name"]: detect_pose(img, a["box"]) for a in STREET_ACTORS}
     allm = np.zeros(img.shape[:2], np.uint8)
-    for m in masks.values():
-        allm |= (m > 40).astype(np.uint8) * 255
+    for a in actors:
+        m = (masks[a["name"]] > 40).astype(np.uint8) * 255
+        allm |= m
+        if a in STREET_ACTORS:  # also remove the old (static) reflection under each person
+            j, _ = poses[a["name"]]
+            ground = max(j["La"][1], j["Ra"][1], j["Lt"][1], j["Rt"][1]) / UP
+            allm |= reflection_mask(m, ground, 0.45 * (a["box"][3] - a["box"][1]))
     clean = inpaint(LAMA, img, cv2.dilate(allm, np.ones((13, 13), np.uint8)))
     big = upscale(img)
     plate = upscale(clean).astype(np.float32) / 255
-    sprites = []
-    for a in actors:
-        mb = cv2.resize(masks[a["name"]], None, fx=UP, fy=UP, interpolation=cv2.INTER_CUBIC)
-        mb = cv2.GaussianBlur(mb, (0, 0), 0.9)
-        sprites.append(Sprite(big, mb, a))
-    # draw order: sky first, then pedestrians far -> near (by feet y)
-    order = [s for s in sprites if s.a in SKY_ACTORS] + sorted(
-        [s for s in sprites if s.a in STREET_ACTORS], key=lambda s: s.a["box"][3])
+    sky = []
+    for a in SKY_ACTORS:
+        mb = cv2.GaussianBlur(cv2.resize(masks[a["name"]], None, fx=UP, fy=UP, interpolation=cv2.INTER_CUBIC), (0, 0), 0.9)
+        sky.append(Sprite(big, mb, a))
+    walkers = []
+    for a in STREET_ACTORS:
+        mb = cv2.GaussianBlur(cv2.resize(masks[a["name"]], None, fx=UP, fy=UP, interpolation=cv2.INTER_CUBIC), (0, 0), 0.9)
+        j, z = poses[a["name"]]
+        cfg = dict(a)
+        cfg.setdefault("dir", 0)
+        if cfg.get("mirror"):  # walk the other way: plan on a flipped canvas, shift back into place
+            Wd = big.shape[1]
+            cx = (j["Lh"][0] + j["Rh"][0]) / 2
+            jf = {k: np.array([Wd - 1 - p[0], p[1]]) for k, p in j.items()}
+            cfg["dir"] = -cfg["dir"]
+            cfg["offset_x"] = 2 * cx - (Wd - 1)
+            walkers.append(Walker(np.ascontiguousarray(big[:, ::-1]), np.ascontiguousarray(mb[:, ::-1]), jf, z, cfg, (VP[0] * 0 + (Wd - 1) / UP - VP[0], VP[1])))
+        else:
+            walkers.append(Walker(big, mb, j, z, cfg, VP))
     H, W = plate.shape[:2]
     ff = ffmpeg_writer("public/street_anim.mp4", W, H, alpha=False)
     for i in range(n_frames):
         t = i / FPS
         frame = plate.copy()
-        for sp in order:
-            if sp.a["kind"] in ("swim", "glide"):
-                rgba, M = swimmer_frame(sp, t)
-                paste(frame, rgba, M)
-            else:
-                rgba, M = walker_frame(sp, t)
-                # wet-road reflection, mirrored about the feet line
-                paste(frame, reflection(rgba), _flip_affine(M, rgba.shape[0], sp.box[3]))
-                paste(frame, rgba, M)
+        for sp in sky:
+            rgba, M = swimmer_frame(sp, t)
+            paste(frame, rgba, M)
+        rendered = []
+        for wk in walkers:
+            rgba, (X0, Y0), ground = wk.render(t, frame.shape)
+            if rgba is not None:
+                rendered.append((ground, rgba, X0, Y0))
+        rendered.sort(key=lambda r: r[0])  # far (higher on screen) first
+        for ground, rgba, X0, Y0 in rendered:
+            refl, g = reflection_layer(rgba, ground - Y0)
+            if refl is not None:
+                y0 = Y0 + g
+                n = min(refl.shape[0], H - y0)
+                if n > 0:
+                    region = frame[y0:y0 + n, X0:X0 + refl.shape[1]]
+                    r = refl[:n, :region.shape[1]]
+                    frame[y0:y0 + n, X0:X0 + region.shape[1]] = region * (1 - r[..., 3:4]) + r[..., :3]
+            hh, ww = rgba.shape[:2]
+            region = frame[Y0:Y0 + hh, X0:X0 + ww]
+            r = rgba[:region.shape[0], :region.shape[1]]
+            frame[Y0:Y0 + region.shape[0], X0:X0 + region.shape[1]] = region * (1 - r[..., 3:4]) + r[..., :3]
         ff.stdin.write((np.clip(frame, 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
         if i % 24 == 0:
             print("street", i, flush=True)
