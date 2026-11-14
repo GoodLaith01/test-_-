@@ -9,16 +9,18 @@ export const COLORS = {
 
 export const W = 1080;
 export const H = 1920;
-export const SRC_W = 2752;
+// Figma keyframes are 864x1536 (served as 2x upscales; coordinates stay in 864 units).
+export const SRC_W = 864;
 export const SRC_H = 1536;
 
 /** Camera: transform for a SRC_W x SRC_H layer so that (cx, cy) is centred at zoom z. */
 export const camera = (cx: number, cy: number, z: number) => {
-  const hw = W / 2 / z;
-  const hh = H / 2 / z;
+  const zz = Math.max(z, W / SRC_W, H / SRC_H);
+  const hw = W / 2 / zz;
+  const hh = H / 2 / zz;
   const x = Math.min(Math.max(cx, hw), SRC_W - hw);
   const y = Math.min(Math.max(cy, hh), SRC_H - hh);
-  return { tx: W / 2 - z * x, ty: H / 2 - z * y, z };
+  return { tx: W / 2 - zz * x, ty: H / 2 - zz * y, z: zz };
 };
 
 /* ------------------------------------------------------------------ god rays */
@@ -108,8 +110,8 @@ export const Bubbles: React.FC<{
 };
 
 /* ------------------------------------------------------------------ traffic */
-type Pt = [number, number];
-const polyline = (pts: Pt[]) => {
+export type Pt = [number, number];
+export const polyline = (pts: Pt[]) => {
   const cum = [0];
   for (let i = 1; i < pts.length; i++) {
     cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
@@ -127,23 +129,23 @@ const along = (pl: ReturnType<typeof polyline>, s: number) => {
   return { p: [ax + (bx - ax) * f, ay + (by - ay) * f] as Pt, n: [-(by - ay) / len, (bx - ax) / len] as Pt };
 };
 
-const HIGHWAY = polyline([
-  [1200, 1494], [1320, 1360], [1440, 1266], [1560, 1214], [1680, 1180],
-  [1840, 1146], [2000, 1120], [2160, 1104], [2280, 1086],
-]);
-const BRIDGE = polyline([[220, 974], [900, 984], [1160, 986], [1600, 1014]]);
+export type Lane = {
+  pl: ReturnType<typeof polyline>;
+  n: number;
+  lane: number; // offset across the road, as a fraction of its width
+  speed: number; // fraction of the path per second; negative = towards the camera
+  wNear: number; // road width at s=0
+  wFar: number; // road width at s=1
+  sz: [number, number]; // light radius [far, near]
+  key: string;
+  fadeIn?: number; // fade lights in over the first part of the path (e.g. from a vanishing point)
+};
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-export const Traffic: React.FC<{ frame: number }> = ({ frame }) => {
+export const Traffic: React.FC<{ frame: number; lanes: Lane[] }> = ({ frame, lanes }) => {
   const t = frame / 30;
   const lights: React.ReactNode[] = [];
-  const lanes: { pl: ReturnType<typeof polyline>; n: number; lane: number; speed: number; wNear: number; wFar: number; sz: [number, number]; key: string }[] = [
-    { pl: HIGHWAY, n: 12, lane: -0.22, speed: 0.055, wNear: 150, wFar: 34, sz: [1.3, 4.2], key: "ha" },
-    { pl: HIGHWAY, n: 13, lane: 0.22, speed: -0.06, wNear: 150, wFar: 34, sz: [1.3, 4.2], key: "hb" },
-    { pl: BRIDGE, n: 10, lane: -0.5, speed: 0.035, wNear: 10, wFar: 10, sz: [1.2, 1.2], key: "ba" },
-    { pl: BRIDGE, n: 10, lane: 0.5, speed: -0.04, wNear: 10, wFar: 10, sz: [1.2, 1.2], key: "bb" },
-  ];
   for (const L of lanes) {
     for (let i = 0; i < L.n; i++) {
       const k = `${L.key}${i}`;
@@ -155,6 +157,7 @@ export const Traffic: React.FC<{ frame: number }> = ({ frame }) => {
       const x = p[0] + n[0] * width * lane;
       const y = p[1] + n[1] * width * lane;
       const rad = lerp(L.sz[1], L.sz[0], s) * 0.9;
+      const fade = L.fadeIn ? Math.min(1, (1 - s) / L.fadeIn) : 1;
       const toward = v < 0;
       const core = toward ? "rgba(255,244,220,1)" : "rgba(255,70,55,1)";
       const glow = toward ? "rgba(255,236,200,0.75)" : "rgba(255,40,30,0.75)";
@@ -171,6 +174,7 @@ export const Traffic: React.FC<{ frame: number }> = ({ frame }) => {
               borderRadius: "50%",
               background: core,
               boxShadow: `0 0 ${rad * 3}px ${rad * 1.2}px ${glow}`,
+              opacity: fade,
             }}
           />
         );

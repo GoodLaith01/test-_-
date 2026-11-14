@@ -62,8 +62,8 @@ L += stereo(brown * swell * 0.16, 0.5)
 
 # 3. Breath bubbles in sync with the picture's bubble bursts.
 bub = np.zeros(N)
-for t0, n, vol in [(0.1, 14, 1.0), (1.4, 11, 0.9), (2.7, 15, 1.0), (4.0, 12, 0.8), (5.3, 10, 0.7),
-                   (6.2, 10, 0.4), (7.8, 12, 0.4), (9.4, 10, 0.35), (11.0, 9, 0.3), (12.6, 9, 0.3)]:
+for t0, n, vol in [(0.1, 14, 1.0), (1.4, 12, 0.9), (2.7, 15, 1.0), (3.9, 12, 0.8),
+                   (5.0, 8, 0.4), (6.6, 9, 0.4), (8.2, 8, 0.35)]:
     for j in range(n):
         ts = t0 + j * rng.uniform(0.03, 0.09) + rng.uniform(0, 0.05)
         f0 = rng.uniform(380, 1200)
@@ -97,26 +97,26 @@ dark = pad([note(38), note(45), note(53)], bright=700)                     # D2 
 wonder = pad([note(38), note(45), note(54), note(57), note(64), note(69)], bright=2600)  # D maj add9
 shimmer = sum(np.sin(2 * np.pi * note(m) * t) * (0.5 + 0.5 * np.sin(2 * np.pi * r * t))
               for m, r in [(81, 0.9), (86, 1.3), (88, 0.7), (93, 1.1)]) / 4
-music = dark * env(0.2, 6.8, 1.8, 1.0) * 0.55
-music += wonder * env(6.0, 15.0, 2.0, 1.6) * 0.75
-music += shimmer * env(7.0, 15.0, 2.5, 1.8) * 0.05
+music = dark * env(0.2, 5.4, 1.6, 1.0) * 0.55
+music += wonder * env(4.6, 15.0, 2.0, 1.6) * 0.75
+music += shimmer * env(5.6, 15.0, 2.5, 1.8) * 0.05
 L += stereo(music * 3.2, 0.35)
 
 # 5. Sub boom on the reveal cut.
-tb = np.clip(t - 6.3, 0, None)
-boom = np.sin(2 * np.pi * (52 * tb - 6 * tb * tb)) * np.exp(-tb / 0.9) * (t >= 6.3)
-boom += lp(rng.standard_normal(N), 160) * np.exp(-tb / 0.35) * (t >= 6.3) * 0.6
+tb = np.clip(t - 4.9, 0, None)
+boom = np.sin(2 * np.pi * (52 * tb - 6 * tb * tb)) * np.exp(-tb / 0.9) * (t >= 4.9)
+boom += lp(rng.standard_normal(N), 160) * np.exp(-tb / 0.35) * (t >= 4.9) * 0.6
 L += stereo(boom * 0.5, 0.0)
 
 # 6. Distant city: low hum + soft traffic swish.
 hum = (np.sin(2 * np.pi * 58 * t) * 0.4 + np.sin(2 * np.pi * 116 * t) * 0.15) * (0.8 + 0.2 * np.sin(2 * np.pi * 0.5 * t))
 swish = bp(rng.standard_normal(N), 180, 900) * (0.6 + 0.4 * np.sin(2 * np.pi * 0.35 * t + 2))
-L += stereo((hum * 0.2 + swish * 0.25) * env(6.4, 15, 2.0, 1.4), 0.8)
+L += stereo((hum * 0.2 + swish * 0.25) * env(5.0, 15, 2.0, 1.4), 0.8)
 
-# 6b. Title chime at 11.0 s: soft inharmonic bell (D6 family).
-tc = np.clip(t - 11.0, 0, None)
+# 6b. Title chime at 10.5 s: soft inharmonic bell (D6 family).
+tc = np.clip(t - 10.5, 0, None)
 chime = sum(a * np.sin(2 * np.pi * fr * tc) * np.exp(-tc / d)
-            for fr, a, d in [(1174.7, 1.0, 1.6), (1761.0, 0.5, 1.1), (2349.3, 0.35, 0.8), (3227.0, 0.18, 0.5)]) * (t >= 11.0)
+            for fr, a, d in [(1174.7, 1.0, 1.6), (1761.0, 0.5, 1.1), (2349.3, 0.35, 0.8), (3227.0, 0.18, 0.5)]) * (t >= 10.5)
 chime *= np.clip(tc / 0.004, 0, 1)
 L += stereo(chime * 0.12, 0.5)
 
