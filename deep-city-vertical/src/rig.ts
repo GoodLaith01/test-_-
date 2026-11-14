@@ -43,14 +43,14 @@ export const SHOTS = {
       { u: 1, x: 448, y: 700, z: 1.46 },
     ],
   },
-  // 9.0-15 s: street level, slow push and tilt up the avenue to the towers and swimmers
+  // 9.0-15 s: street level: follow the people walking, then tilt up the avenue to the towers and swimmers
   street: {
     start: 216,
     end: DURATION,
     seed: 3,
     keys: [
-      { u: 0, x: 452, y: 905, z: 1.64 },
-      { u: 0.5, x: 462, y: 760, z: 1.68 },
+      { u: 0, x: 430, y: 1040, z: 2.0 },
+      { u: 0.4, x: 450, y: 1000, z: 1.92 },
       { u: 1, x: 468, y: 640, z: 1.74 },
     ],
   },

@@ -2,12 +2,12 @@ import "@fontsource/montserrat/300.css";
 import "@fontsource/montserrat/600.css";
 import { CameraMotionBlur } from "@remotion/motion-blur";
 import React from "react";
-import { AbsoluteFill, Audio, Easing, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, Sequence, staticFile, useCurrentFrame } from "remotion";
 import { Bubbles, COLORS, GodRays, Grain, Lane, Particles, polyline, Traffic, Vignette } from "./effects";
 import { Cam, clamp01, DURATION, FPS, shotCamera, SHOTS, smooth, SRC_H, SRC_W, stageTransform, W } from "./rig";
 
 export { DURATION, FPS };
-export const TITLE_IN = Math.round(10.5 * FPS);
+export const TITLE_IN = Math.round(11.2 * FPS);
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const ramp = (f: number, a: number, b: number) => clamp01((f - a) / (b - a));
@@ -28,10 +28,20 @@ const Stage: React.FC<{ cam: Cam; children: React.ReactNode; filter?: string }> 
   </div>
 );
 
+const isVideo = (src: string) => /\.(mp4|webm)$/.test(src);
+
+/** Image or baked animation layer placed in source units. */
+const Layer: React.FC<{ src: string; style: React.CSSProperties }> = ({ src, style }) =>
+  isVideo(src) ? (
+    <OffthreadVideo src={staticFile(src)} muted transparent={src.endsWith(".webm")} style={{ position: "absolute", ...style }} />
+  ) : (
+    <Img src={staticFile(src)} style={{ position: "absolute", ...style }} />
+  );
+
 /** Background layer with optional depth-of-field blur (in source px). */
 const Plate: React.FC<{ src: string; blur?: number; children?: React.ReactNode }> = ({ src, blur = 0, children }) => (
   <div style={{ position: "absolute", inset: 0, filter: blur > 0.05 ? `blur(${blur}px)` : undefined }}>
-    <Img src={staticFile(src)} style={{ position: "absolute", left: 0, top: 0, width: SRC_W, height: SRC_H }} />
+    <Layer src={src} style={{ left: 0, top: 0, width: SRC_W, height: SRC_H }} />
     {children}
   </div>
 );
@@ -55,10 +65,7 @@ const Swimmer: React.FC<{
       filter: blur > 0.05 ? `blur(${blur}px)` : undefined,
     }}
   >
-    <Img
-      src={staticFile(src)}
-      style={{ position: "absolute", left: box[0], top: box[1], width: box[2] - box[0], height: box[3] - box[1] }}
-    />
+    <Layer src={src} style={{ left: box[0], top: box[1], width: box[2] - box[0], height: box[3] - box[1] }} />
     {children}
   </div>
 );
@@ -92,8 +99,8 @@ const DiveScene: React.FC = () => {
         <Plate src="dive_plate.jpg" blur={0.9} />
         <GodRays frame={f} sun={[600, -160]} seed="dive" opacity={0.5} length={1500} count={14} />
         <Swimmer
-          src="dive_man.png"
-          box={[137, 0, 711, 1032]}
+          src="dive_man_anim.webm"
+          box={[107, 0, 741, 1062]}
           anchor={[430, 640]}
           scale={manScale}
           shift={shift}
@@ -144,7 +151,7 @@ const CityScene: React.FC = () => {
           <Traffic frame={f} lanes={CITY_LANES} />
         </Plate>
         <GodRays frame={f} sun={[430, -260]} seed="city" opacity={0.34} length={1500} count={16} />
-        <Swimmer src="city_man.png" box={[0, 888, 369, 1536]} anchor={[190, 1000]} scale={manScale} shift={shift} blur={manBlur}>
+        <Swimmer src="city_man_anim.webm" box={[0, 858, 399, 1536]} anchor={[190, 1000]} scale={manScale} shift={shift} blur={manBlur}>
           <Bubbles frame={f} mouth={[300, 985]} bursts={[[4.6, 8], [6.3, 9], [8.0, 8]]} seed="cb" />
         </Swimmer>
       </Stage>
@@ -175,7 +182,7 @@ const StreetScene: React.FC = () => {
   return (
     <AbsoluteFill style={{ opacity: appear }}>
       <Stage cam={cam} filter="saturate(1.06) contrast(1.06)">
-        <Plate src="street.jpg" blur={focusIn}>
+        <Plate src="street_anim.mp4" blur={focusIn}>
           <Traffic frame={f} lanes={STREET_LANES} />
         </Plate>
         <GodRays frame={f} sun={[560, -220]} seed="street" opacity={0.32} length={1500} count={12} />

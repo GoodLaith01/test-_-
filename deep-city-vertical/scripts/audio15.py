@@ -113,10 +113,10 @@ hum = (np.sin(2 * np.pi * 58 * t) * 0.4 + np.sin(2 * np.pi * 116 * t) * 0.15) * 
 swish = bp(rng.standard_normal(N), 180, 900) * (0.6 + 0.4 * np.sin(2 * np.pi * 0.35 * t + 2))
 L += stereo((hum * 0.2 + swish * 0.25) * env(4.6, 15, 2.0, 1.4), 0.8)
 
-# 6b. Title chime at 10.5 s: soft inharmonic bell (D6 family).
-tc = np.clip(t - 10.5, 0, None)
+# 6b. Title chime at 11.2 s: soft inharmonic bell (D6 family).
+tc = np.clip(t - 11.2, 0, None)
 chime = sum(a * np.sin(2 * np.pi * fr * tc) * np.exp(-tc / d)
-            for fr, a, d in [(1174.7, 1.0, 1.6), (1761.0, 0.5, 1.1), (2349.3, 0.35, 0.8), (3227.0, 0.18, 0.5)]) * (t >= 10.5)
+            for fr, a, d in [(1174.7, 1.0, 1.6), (1761.0, 0.5, 1.1), (2349.3, 0.35, 0.8), (3227.0, 0.18, 0.5)]) * (t >= 11.2)
 chime *= np.clip(tc / 0.004, 0, 1)
 L += stereo(chime * 0.12, 0.5)
 
@@ -129,13 +129,13 @@ for a, b, lo_f, hi_f in [(3.0, 3.5, 200, 700), (3.5, 3.9, 350, 1300), (3.9, 4.2,
 wsh *= np.clip((t - 3.0) / 1.45, 0, 1) ** 2.2 * (t < 4.45)
 L += stereo(wsh * 0.55, 0.7)
 
-# 6d. Riser into the title (9.0-10.5 s) and a soft sweep with the light streak (11.5-12.9 s).
-rs = np.clip((t - 9.0) / 1.5, 0, 1) * (t < 10.5)
+# 6d. Riser into the title (9.7-11.2 s) and a soft sweep with the light streak (12.2-13.6 s).
+rs = np.clip((t - 9.7) / 1.5, 0, 1) * (t < 11.2)
 riser = bp(rng.standard_normal(N), 1500, 7000, 2) * rs ** 2.5 * 0.35
 riser += np.sin(2 * np.pi * np.cumsum(220 + 660 * rs ** 2) / SR) * rs ** 3 * 0.08
 L += stereo(riser, 0.6)
-sw = np.clip((t - 11.5) / 1.4, 0, 1)
-sweep = bp(rng.standard_normal(N), 3000, 9000, 2) * np.sin(np.pi * sw) ** 2 * (t >= 11.5) * (t < 12.9) * 0.12
+sw = np.clip((t - 12.2) / 1.4, 0, 1)
+sweep = bp(rng.standard_normal(N), 3000, 9000, 2) * np.sin(np.pi * sw) ** 2 * (t >= 12.2) * (t < 13.6) * 0.12
 L += stereo(sweep, 0.9)
 
 # 7. Reverb: exponentially decaying noise IR, per channel.
