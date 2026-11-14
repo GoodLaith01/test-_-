@@ -1,0 +1,13 @@
+assets/*_mask.png
+assets/*_plate.png
+preview_*.jpg
+check_*.jpg
+crop_*.jpg
+grid_*.jpg
+zoom_*.jpg
+sheet*.jpg
+still_*.jpg
+x.mp4
+video_noaudio.mp4
+soundtrack.wav
+render.log
