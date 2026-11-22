@@ -68,6 +68,7 @@ button{font:inherit;cursor:pointer}
 .btn{border:1px solid var(--line);background:var(--surface-2);color:var(--fg);padding:8px 14px;border-radius:8px;font-weight:500}
 .btn:hover{border-color:var(--muted)}
 .btn.primary{background:var(--accent-bg);border-color:var(--accent-bg);color:var(--accent-ink);font-weight:600}
+.btn[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
 .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface-2)}
 .seg button{flex:1;border:0;background:transparent;color:var(--muted);padding:7px 6px;font-size:13.5px;font-weight:500}
 .seg button + button{border-left:1px solid var(--line)}
@@ -142,6 +143,7 @@ input[type=range]:disabled{opacity:.4}
           <button class="btn primary" id="play">Pause</button>
           <button class="btn" id="restart">Restart sweep</button>
           <button class="btn" id="resetView">Reset view</button>
+          <button class="btn" id="musicBtn" aria-pressed="false">Music: off</button>
         </div>
         <div class="ctl">
           <label for="freq">Frequency <output id="freqOut">0.20 Hz</output></label>
@@ -830,6 +832,117 @@ function updateUI(){
   $('#capTxt').textContent = dsc.t; $('#capDot').style.color = dsc.c; $('#nowTxt').textContent = dsc.d;
 }
 
+/* ---------------- music: a live soundtrack driven by the circuit ----------------
+   Steady 120 BPM groove. Each AC half-cycle plays a note (high square = A is +, low triangle = B is +).
+   A sub-bass "DC note" fades in as the output gets smooth; without a capacitor it buzzes at the ripple rate. */
+const Music = (() => {
+  let ctx = null, master, noiseBuf, amp, droneGain, lfo, lfoGain, timer = null, nextStep = 0, step = 0;
+  let lastSign = 0, lastLamp = 0, enabled = false;
+  const mtof = m => 440*Math.pow(2, (m-69)/12);
+  const MINOR = [[57,60,64],[53,57,60],[48,52,55],[55,59,62]], MAJOR = [[57,61,64],[52,56,59],[54,57,61],[50,54,57]];
+  const MEL = [76,76,73,76,78,76,73,71, 71,71,68,71,73,71,68,64, 73,73,69,73,76,73,69,66, 74,73,71,69,71,73,76,81];
+  const mode = () => {
+    const fv = S.f*S.ts, rip = stats.n ? (stats.max - stats.min)/Math.max(1, stats.avg) : 1;
+    if (S.cap && fv > 8 && rip < 0.3) return 'dc';
+    return fv < 6 ? 'ac' : 'sweep';
+  };
+  const chordNow = () => (mode() === 'dc' ? MAJOR : MINOR)[Math.floor(step/8) % 4];
+  function init(){
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ctx.createDynamicsCompressor(); master = ctx.createGain(); master.gain.value = 0.5;
+    master.connect(comp); comp.connect(ctx.destination);
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2 - 1;
+    const drone = ctx.createOscillator(); drone.type = 'sine'; drone.frequency.value = mtof(33);
+    amp = ctx.createGain(); amp.gain.value = 1;
+    lfo = ctx.createOscillator(); lfo.frequency.value = 1; lfoGain = ctx.createGain(); lfoGain.gain.value = 0;
+    lfo.connect(lfoGain); lfoGain.connect(amp.gain);
+    droneGain = ctx.createGain(); droneGain.gain.value = 0;
+    drone.connect(amp); amp.connect(droneGain); droneGain.connect(master);
+    drone.start(); lfo.start();
+  }
+  function out(node, pan){
+    if (pan && ctx.createStereoPanner){ const p = ctx.createStereoPanner(); p.pan.value = pan; node.connect(p); p.connect(master); } else node.connect(master);
+  }
+  function voice(t, midi, dur, type, gain, pan, cutoff){
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = mtof(midi);
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff || 2400;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f); f.connect(g); out(g, pan); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function noise(t, dur, hp, gain, pan){
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+    const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(g); out(g, pan); s.start(t, Math.random()*0.5); s.stop(t + dur + 0.02);
+  }
+  function kick(t, gain){
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.35);
+  }
+  function bell(t, midi, gain){ voice(t, midi, 1.1, 'sine', gain, 0, 8000); voice(t, midi + 17.6, 0.4, 'sine', gain*0.35, 0, 8000); }
+  function schedule(){
+    if (!ctx) return;
+    while (nextStep < ctx.currentTime + 0.12){
+      const t = nextStep, s8 = step % 8, m = mode(), ch = chordNow();
+      if (s8 === 0) ch.forEach(n => voice(t, n, 2.1, 'sawtooth', 0.025, 0, 900));
+      if (m === 'dc'){
+        if (s8 % 2 === 0) kick(t, 0.8);
+        if (s8 === 2 || s8 === 6) noise(t, 0.18, 1200, 0.25);
+        noise(t, s8 % 2 ? 0.2 : 0.05, 7000, s8 % 2 ? 0.08 : 0.04, 0.25);
+        if (s8 % 2) ch.forEach(n => voice(t, n + 12, 0.14, 'sawtooth', 0.02, 0, 3000));
+        voice(t, MEL[step % 32], 0.22, 'square', 0.05, 0.1, 2600);
+      } else if (m === 'sweep'){
+        kick(t, 0.6 + 0.3*Math.min(1, S.f*S.ts/40));
+        noise(t, 0.05, 7000, 0.05, 0.25);
+      } else {
+        if (s8 === 0 || s8 === 4) kick(t, 0.8);
+        if (s8 === 2 || s8 === 6) noise(t, 0.2, 1500, 0.22);
+        if (s8 % 2) noise(t, 0.05, 7000, 0.06, 0.25);
+        // arpeggio only while diodes are conducting: amber climbs, cyan falls
+        if (ib > 1e-4){
+          const up = [ch[0] + 12, ch[1] + 12, ch[2] + 12, ch[0] + 24], k = step % 4;
+          if (vs >= 0) voice(t, up[k], 0.12, 'square', 0.04, -0.35, 2600);
+          else voice(t, up[3-k] - 12, 0.12, 'triangle', 0.09, 0.35, 3000);
+        }
+      }
+      nextStep += 0.25; step++;
+    }
+  }
+  function frame(){
+    if (!ctx || !enabled) return;
+    if (!S.playing){ if (ctx.state === 'running') ctx.suspend(); return; }
+    if (ctx.state === 'suspended') ctx.resume();
+    const now = ctx.currentTime, fv = S.f*S.ts, m = mode(), ch = chordNow();
+    const sign = vs >= 0 ? 1 : -1;
+    if (sign !== lastSign && fv < 8 && m !== 'dc'){
+      const root = ch[0] - 12;
+      if (sign > 0) voice(now + 0.01, root + 12, Math.min(0.5, 0.45/fv), 'square', 0.09, 0, 1400);
+      else voice(now + 0.01, root, Math.min(0.5, 0.45/fv), 'triangle', 0.2, 0, 2000);
+    }
+    lastSign = sign;
+    if (!S.cap && fv < 3 && lampB > 0.85 && lastLamp <= 0.85) bell(now + 0.01, ch[2] + 12, 0.06);
+    lastLamp = lampB;
+    // the DC note: louder and steadier as the output smooths out
+    const rip = stats.n ? clamp((stats.max - stats.min)/Math.max(1, stats.avg), 0, 1) : 1;
+    const level = clamp(stats.avg/(VP - 1.4), 0, 1)*(fv > 3 ? 1 : 0.4);
+    droneGain.gain.setTargetAtTime(0.35*level, now, 0.2);
+    lfo.frequency.setTargetAtTime(Math.min(2*fv*(S.mode === 'full' ? 1 : 0.5), 100), now, 0.1);
+    lfoGain.gain.setTargetAtTime(0.95*rip, now, 0.2);
+  }
+  function toggle(){
+    if (!ctx){ init(); nextStep = ctx.currentTime + 0.05; }
+    enabled = !enabled;
+    if (enabled){ ctx.resume(); nextStep = Math.max(nextStep, ctx.currentTime + 0.05); timer = setInterval(schedule, 25); }
+    else { clearInterval(timer); ctx.suspend(); }
+    const b = $('#musicBtn'); b.setAttribute('aria-pressed', String(enabled)); b.textContent = enabled ? 'Music: on' : 'Music: off';
+  }
+  return { frame, toggle };
+})();
+$('#musicBtn').addEventListener('click', () => { try { Music.toggle(); } catch (e) { $('#musicBtn').textContent = 'Music unavailable'; } });
+
 /* ---------------- loop ---------------- */
 function resize(){
   const w = host.clientWidth, h = host.clientHeight;
@@ -867,6 +980,7 @@ function tick(now){
     simDt = realDt;
   }
   updateVisuals(realDt, simDt);
+  Music.frame();
   controls.update();
   renderer.render(scene, camera);
   drawScope();
