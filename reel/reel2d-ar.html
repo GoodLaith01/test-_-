@@ -149,19 +149,20 @@ function calcStats(){
   for (let c = 0; c < bCount; c++){ if (bT[i] < t0) break; const v = bOut[i]; sum += v; if (v < mn) mn = v; if (v > mx) mx = v; n++; i = (i - 1 + BUF) % BUF; }
   stats.n = n; if (n){ stats.avg = sum/n; stats.min = mn; stats.max = mx; }
 }
+let brState = 'A';
 function captionAt(t){
   calcStats();
+  if (ib > 1e-3) brState = vs >= 0 ? 'A' : 'B';
   const fs = S.f < 10 ? S.f.toFixed(2) : S.f.toFixed(1);
   if (t < 4) return { k:'intro', n:'', title:'كيف يتحول التيار المتردد إلى تيار مستمر؟', body:'تابع حركة التيار في دائرة التقويم خطوة بخطوة.' };
   if (t < 10) return { k:'src', n:'1', title:'مصدر التيار المتردد AC', body:'يغيّر التيار اتجاهه 50 مرة في الثانية. أبطأناه هنا إلى 0.5 هرتز لتتابعه بعينك.' };
   if (t < 14) return { k:'xf', n:'2', title:'المحوّل الخافض للجهد', body:'يخفض الجهد من 230 فولت إلى 12 فولت، وتصل القمة إلى 17 فولت تقريباً.' };
   if (t < 22){
-    if (ib < 1e-4) return { k:'br0', n:'3', title:'القنطرة: أربعة دايودات', body:'عند الصفر لا يكفي الجهد لفتح الدايودات، فيتوقف التيار لحظة.', col:'#8b97a6' };
-    return vs >= 0
-      ? { k:'brA', n:'3', title:'الطرف A موجب: يمر التيار عبر D1 وD3', body:'الدايودان D2 وD4 مغلقان ويمنعان مرور التيار.', col:'#ffb43b' }
-      : { k:'brB', n:'3', title:'الطرف B موجب: يمر التيار عبر D2 وD4', body:'الدايودان D1 وD3 مغلقان ويمنعان مرور التيار.', col:'#3fd0ff' };
+    return brState === 'A'
+      ? { k:'brA', n:'3', title:'الطرف A موجب، فيوصل D1 وD3', body:'مسار التيار: A ثم D1 ثم المصباح ثم D3 ثم B\nأما D2 وD4 ففي انحياز عكسي، فلا يمر فيهما تيار.', col:'#ffb43b' }
+      : { k:'brB', n:'3', title:'الطرف B موجب، فيوصل D2 وD4', body:'مسار التيار: B ثم D2 ثم المصباح ثم D4 ثم A\nأما D1 وD3 ففي انحياز عكسي، فلا يمر فيهما تيار.', col:'#3fd0ff' };
   }
-  if (t < 28) return { k:'out', n:'3', title:'تيار باتجاه واحد في المصباح', body:'لكنه ينبض ويهبط إلى الصفر مرتين في كل دورة، فيومض المصباح.' };
+  if (t < 28) return { k:'out', n:'3', title:'تيار باتجاه واحد في المصباح', body:'في النصفين يدخل التيار المصباح من الطرف (+) نفسه،\nلكنه ينبض ويهبط إلى الصفر مرتين في كل دورة.' };
   if (t < 30.2) return { k:'cap', n:'4', title:'مكثّف التنعيم', body:'يخزّن الشحنة عند كل قمة، ثم يغذّي المصباح بين القمم.', col:'#6dff9a' };
   if (t < 38) return { k:'sw', n:'4', title:'نرفع التردد إلى 50 هرتز', body:'التردد الآن ' + fs + ' هرتز. كلما أسرعت القمم شُحن المكثّف قبل أن يفرغ.' , col:'#ffb43b' };
   if (t < 44.5) return { k:'dc', n:'', title:'النتيجة: تيار مستمر ناعم DC', body:'الجهد قرابة ' + stats.avg.toFixed(1) + ' فولت، والتموّج ' + (stats.n ? (stats.max-stats.min).toFixed(1) : '0') + ' فولت فقط.', col:'#6dff9a' };
@@ -194,7 +195,7 @@ function drawCaption(t){
   g.fillStyle = c.col || '#eef3f8'; g.font = '700 46px ' + AR;
   g.fillText(c.title, right, Y + 82, right - X - 30);
   g.fillStyle = '#c9d3de'; g.font = '400 34px ' + AR;
-  wrapLines(c.body, Wd - 68).slice(0, 2).forEach((ln, i) => g.fillText(ln, X + Wd - 34, Y + 145 + i*50));
+  c.body.split('\n').flatMap(part => wrapLines(part, Wd - 68)).slice(0, 2).forEach((ln, i) => g.fillText(ln, X + Wd - 34, Y + 145 + i*50));
   g.restore();
 }
 function hexRgb(h){ const n = parseInt(h.slice(1), 16); return ((n>>16)&255) + ',' + ((n>>8)&255) + ',' + (n&255); }
@@ -212,7 +213,7 @@ function drawEnding(t){
   const rows = [
     ['1', 'مصدر AC', 'تيار يغيّر اتجاهه باستمرار', '#ffb43b'],
     ['2', 'المحوّل', 'يخفض الجهد من 230 إلى 12 فولت', '#c7b6ff'],
-    ['3', 'القنطرة', 'أربعة دايودات توجّه التيار باتجاه واحد', '#3fd0ff'],
+    ['3', 'الجسر', 'أربعة دايودات توجّه التيار باتجاه واحد', '#3fd0ff'],
     ['4', 'المكثّف', 'ينعّم النبضات إلى تيار مستمر', '#6dff9a']
   ];
   rows.forEach((r, i) => {
@@ -242,7 +243,7 @@ function drawEnding(t){
     g.fillStyle = '#ffb43b'; g.font = '700 48px ' + AR; g.fillText('بطاقة الجهاز', X + Wd - 40, Y + 78);
     g.direction = 'ltr'; g.textAlign = 'left'; g.fillStyle = '#6dff9a'; g.font = '600 34px JBMono'; g.fillText('AC → DC', X + 40, Y + 76);
     const spec = [
-      ['الجهاز', 'مقوّم قنطرة موجة كاملة', true],
+      ['الجهاز', 'مقوّم جسري كامل الموجة', true],
       ['الدخل', '230 V AC · 50 Hz'],
       ['المحوّل', '230 V : 12 V rms'],
       ['الدايودات', '4 × 1N4007'],
@@ -458,6 +459,22 @@ function drawFrame(t, simDt){
     g.strokeStyle = COL.chalk; g.lineWidth = 4;
     g.beginPath(); g.moveTo(-22, -24); g.lineTo(-22, 24); g.lineTo(20, 0); g.closePath(); g.fill(); g.stroke();
     g.beginPath(); g.moveTo(22, -26); g.lineTo(22, 26); g.lineWidth = 6; g.stroke();
+    g.restore();
+  }
+
+  // labels so the explanation can be followed on the drawing
+  const la = prog(t, 3.0, 3.6);
+  if (la > 0){
+    g.save(); g.globalAlpha = la; g.direction = 'ltr'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 34px JBMono';
+    const lab = (txt, x, y, col) => { g.lineWidth = 8; g.strokeStyle = '#0a1220'; g.strokeText(txt, x, y); g.fillStyle = col; g.fillText(txt, x, y); };
+    lab('A', 345, 880, COL.amber); lab('B', 738, 905, COL.cyan);
+    for (const n of ['D1','D2','D3','D4']){
+      const [a, b] = PATHS[n].pts, mx = (a[0]+b[0])/2, my = (a[1]+b[1])/2;
+      const dx = mx - 540, dy = my - 960, L = Math.hypot(dx, dy) || 1;
+      lab(n, mx + dx/L*58, my + dy/L*58, PATHS[n].diode === 'amber' ? COL.amber : COL.cyan);
+    }
+    g.font = '700 44px JBMono';
+    lab('+', 578, 1112, COL.amber); lab('−', 512, 790, '#c9d3de');
     g.restore();
   }
 
