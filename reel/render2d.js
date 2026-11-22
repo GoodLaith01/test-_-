@@ -6,10 +6,10 @@ const [wav, out, framesDir, only] = process.argv.slice(2);
   const b = await chromium.launch();
   const p = await b.newPage({ viewport:{ width:1080, height:1920 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto('file://' + path.join(__dirname, 'reel2d.html'));
+  await p.goto('file://' + path.join(__dirname, (process.env.REEL || 'reel2d') + '.html'));
   await p.waitForFunction(() => window.ready);
   fs.mkdirSync(framesDir, { recursive:true });
-  const FPS = 30, total = 50*FPS;
+  const FPS = 30, total = Math.round((await p.evaluate(() => window.DUR || 50))*FPS);
   const want = only ? new Set(only.split(',').map(s => Math.round(parseFloat(s)*FPS))) : null;
   const last = want ? Math.max(...want) : total - 1;
   for (let f = 0; f <= last; f++){

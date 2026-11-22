@@ -1,0 +1,462 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>AC to DC Reel 2D Arabic</title>
+<style>
+@font-face{font-family:"Plex Arabic";font-weight:400;src:url(fonts/ibm-plex-sans-arabic-arabic-400-normal.woff2) format("woff2");unicode-range:U+0600-06FF,U+0750-077F,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F}
+@font-face{font-family:"Plex Arabic";font-weight:600;src:url(fonts/ibm-plex-sans-arabic-arabic-600-normal.woff2) format("woff2");unicode-range:U+0600-06FF,U+0750-077F,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F}
+@font-face{font-family:"Plex Arabic";font-weight:700;src:url(fonts/ibm-plex-sans-arabic-arabic-700-normal.woff2) format("woff2");unicode-range:U+0600-06FF,U+0750-077F,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F}
+@font-face{font-family:"Plex Arabic";font-weight:400;src:url(fonts/ibm-plex-sans-arabic-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+2000-206F,U+2190-21FF,U+2248,U+00B5,U+03A9,U+00D7}
+@font-face{font-family:"Plex Arabic";font-weight:600;src:url(fonts/ibm-plex-sans-arabic-latin-600-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+2000-206F,U+2190-21FF,U+2248,U+00B5,U+03A9,U+00D7}
+@font-face{font-family:"Plex Arabic";font-weight:700;src:url(fonts/ibm-plex-sans-arabic-latin-700-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+2000-206F,U+2190-21FF,U+2248,U+00B5,U+03A9,U+00D7}
+@font-face{font-family:"JBMono";font-weight:600;src:url(fonts/jetbrains-mono-latin-600-normal.woff2) format("woff2")}
+html,body{margin:0;background:#0a1220}canvas{display:block}</style></head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+(function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const reduceMotion = false;
+const EVT = /*__EVENTS__*/;
+/*__MODEL__*/
+let uiDirty = false;
+S.auto = false; S.cap = false; S.mode = 'full'; S.f = 0.5;
+
+/* ================= music sync ================= */
+const FPS = 30;
+const fAt = t => t < 30 ? 0.5 : t < 38 ? 0.5*Math.pow(100, (t-30)/8) : 50;
+function lastBefore(list, t){ let lo = 0, hi = list.length - 1, r = -1; while (lo <= hi){ const m = (lo+hi) >> 1; if (list[m] <= t){ r = m; lo = m+1; } else hi = m-1; } return r < 0 ? -99 : list[r]; }
+const hit = (list, t, k) => Math.exp(-(t - lastBefore(list, t))*k);
+
+/* ================= geometry (canvas px) ================= */
+function coil(x0, x1, y, n, down){
+  const w = (x1-x0)/n, r = w/2, pts = [];
+  for (let k = 0; k < n; k++){ const cx = x0 + r + w*k;
+    for (let i = (k ? 1 : 0); i <= 16; i++){ const u = i/16, th = down ? Math.PI - u*Math.PI : Math.PI + u*Math.PI; pts.push([cx + r*Math.cos(th), y + r*Math.sin(th)]); } }
+  return pts;
+}
+const priCoil = coil(380, 700, 640, 5, true);
+const secCoil = coil(380, 700, 770, 4, false);
+const hop = []; for (let i = 0; i <= 12; i++){ const th = -Math.PI*i/12; hop.push([700 + 14*Math.cos(th), 820 + 14*Math.sin(th)]); }
+const PATHS = {
+  PRI:   { pts:[[470,520],[380,520],[380,640]].concat(priCoil.slice(1), [[700,520],[610,520]]), draw:[0.6,1.6] },
+  PRI_INT:{ pts:[[610,520],[470,520]], hidden:true, draw:[0,0] },
+  SEC:   { pts:[[700,960],[700,770]].concat(secCoil.slice().reverse().slice(1), [[380,960]]), draw:[1.6,2.4] },
+  D1:    { pts:[[380,960],[540,1100]], draw:[2.4,2.9], diode:'amber' },
+  D2:    { pts:[[700,960],[540,1100]], draw:[2.4,2.9], diode:'cyan' },
+  D3:    { pts:[[540,820],[700,960]],  draw:[2.1,2.6], diode:'amber' },
+  D4:    { pts:[[540,820],[380,960]],  draw:[2.1,2.6], diode:'cyan' },
+  RP1:   { pts:[[540,1100],[540,1190]], draw:[2.8,3.0] },
+  LOAD:  { pts:[[540,1190],[760,1190],[760,1264],[745,1290],[775,1310],[745,1330],[775,1350],[760,1376],[760,1450]], draw:[2.9,3.5] },
+  RN1:   { pts:[[760,1450],[880,1450],[880,820]].concat(hop, [[540,820]]), draw:[2.9,3.6] },
+  CAP:   { pts:[[540,1190],[330,1190],[330,1300],[330,1322],[330,1450],[760,1450]], draw:[28.0,28.6], skip:2 }
+};
+const NAMES = Object.keys(PATHS);
+for (const n of NAMES){
+  const P = PATHS[n]; P.name = n; P.cum = [0];
+  for (let i = 1; i < P.pts.length; i++) P.cum.push(P.cum[i-1] + Math.hypot(P.pts[i][0]-P.pts[i-1][0], P.pts[i][1]-P.pts[i-1][1]));
+  P.len = P.cum[P.cum.length-1]; P.n = Math.max(2, Math.round(P.len/28)); P.sp = P.len/P.n; P.offset = 0; P.sumAbs = 0; P.bright = 0;
+}
+function ptAt(P, s){
+  const c = P.cum; let lo = 0, hi = c.length-1;
+  while (hi - lo > 1){ const m = (lo+hi) >> 1; if (c[m] <= s) lo = m; else hi = m; }
+  const seg = (c[hi]-c[lo]) || 1, u = (s - c[lo])/seg;
+  return [P.pts[lo][0] + (P.pts[hi][0]-P.pts[lo][0])*u, P.pts[lo][1] + (P.pts[hi][1]-P.pts[lo][1])*u, lo];
+}
+
+/* ================= camera: zoom on each part ================= */
+const FULL = { x:600, y:950, s:0.85 };
+const SHOTS = [
+  { t:0,    ...FULL, d:0.1 },
+  { t:4,    x:540, y:585,  s:1.9,  d:0.9 },   // AC source
+  { t:10,   x:540, y:705,  s:1.9,  d:0.9 },   // transformer
+  { t:14,   x:540, y:950,  s:1.55, d:0.9 },   // bridge
+  { t:22,   x:610, y:1300, s:1.5,  d:0.9 },   // load
+  { t:28,   x:390, y:1315, s:2.0,  d:0.5 },   // capacitor drops in
+  { t:30.2, ...FULL, d:3.0 },                 // pull back during the sweep
+];
+function camAt(t){
+  let i = 0; while (i+1 < SHOTS.length && SHOTS[i+1].t <= t) i++;
+  const cur = SHOTS[i]; if (i === 0) return cur;
+  const prev = camAt(cur.t - 1e-6), k = ease((t - cur.t)/cur.d);
+  return { x: prev.x + (cur.x - prev.x)*k, y: prev.y + (cur.y - prev.y)*k, s: prev.s + (cur.s - prev.s)*k };
+}
+
+/* ================= Arabic captions ================= */
+const AR = '"Plex Arabic", sans-serif';
+const stats = { n:0, avg:0, min:0, max:0 };
+function calcStats(){
+  const W = CYCLES / S.f, t0 = simT - W; let n = 0, sum = 0, mn = 1e9, mx = -1e9, i = (bIdx - 1 + BUF) % BUF;
+  for (let c = 0; c < bCount; c++){ if (bT[i] < t0) break; const v = bOut[i]; sum += v; if (v < mn) mn = v; if (v > mx) mx = v; n++; i = (i - 1 + BUF) % BUF; }
+  stats.n = n; if (n){ stats.avg = sum/n; stats.min = mn; stats.max = mx; }
+}
+function captionAt(t){
+  calcStats();
+  const fs = S.f < 10 ? S.f.toFixed(2) : S.f.toFixed(1);
+  if (t < 4) return { k:'intro', n:'', title:'كيف يتحول التيار المتردد إلى تيار مستمر؟', body:'تابع حركة التيار في دائرة التقويم خطوة بخطوة.' };
+  if (t < 10) return { k:'src', n:'1', title:'مصدر التيار المتردد AC', body:'يغيّر التيار اتجاهه 50 مرة في الثانية. أبطأناه هنا إلى 0.5 هرتز لتتابعه بعينك.' };
+  if (t < 14) return { k:'xf', n:'2', title:'المحوّل الخافض للجهد', body:'يخفض الجهد من 230 فولت إلى 12 فولت، وتصل القمة إلى 17 فولت تقريباً.' };
+  if (t < 22){
+    if (ib < 1e-4) return { k:'br0', n:'3', title:'القنطرة: أربعة دايودات', body:'عند الصفر لا يكفي الجهد لفتح الدايودات، فيتوقف التيار لحظة.', col:'#8b97a6' };
+    return vs >= 0
+      ? { k:'brA', n:'3', title:'الطرف A موجب: يمر التيار عبر D1 وD3', body:'الدايودان D2 وD4 مغلقان ويمنعان مرور التيار.', col:'#ffb43b' }
+      : { k:'brB', n:'3', title:'الطرف B موجب: يمر التيار عبر D2 وD4', body:'الدايودان D1 وD3 مغلقان ويمنعان مرور التيار.', col:'#3fd0ff' };
+  }
+  if (t < 28) return { k:'out', n:'3', title:'تيار باتجاه واحد في المصباح', body:'لكنه ينبض ويهبط إلى الصفر مرتين في كل دورة، فيومض المصباح.' };
+  if (t < 30.2) return { k:'cap', n:'4', title:'مكثّف التنعيم', body:'يخزّن الشحنة عند كل قمة، ثم يغذّي المصباح بين القمم.', col:'#6dff9a' };
+  if (t < 38) return { k:'sw', n:'4', title:'نرفع التردد إلى 50 هرتز', body:'التردد الآن ' + fs + ' هرتز. كلما أسرعت القمم شُحن المكثّف قبل أن يفرغ.' , col:'#ffb43b' };
+  if (t < 44.5) return { k:'dc', n:'', title:'النتيجة: تيار مستمر ناعم DC', body:'الجهد قرابة ' + stats.avg.toFixed(1) + ' فولت، والتموّج ' + (stats.n ? (stats.max-stats.min).toFixed(1) : '0') + ' فولت فقط.', col:'#6dff9a' };
+  return null;
+}
+function wrapLines(text, maxW){
+  const words = text.split(' '), lines = []; let cur = '';
+  for (const w of words){ const test = cur ? cur + ' ' + w : w; if (g.measureText(test).width > maxW && cur){ lines.push(cur); cur = w; } else cur = test; }
+  if (cur) lines.push(cur); return lines;
+}
+let capKey = '', capT = -9, capStep = '';
+function drawCaption(t){
+  const c = captionAt(t); if (!c) return;
+  const stepKey = c.n + c.k.slice(0,2);
+  if (stepKey !== capStep){ capStep = stepKey; capT = t; }
+  if (c.k !== capKey){ capKey = c.k; }
+  const k = ease((t - capT)/0.35) * (t < 0.8 ? 0 : 1) * (t >= 0.8 && t < 1.15 ? ease((t-0.8)/0.35) : 1);
+  if (k <= 0) return;
+  const X = 60, Y = 1450, Wd = 960, Hd = 230;
+  g.save(); g.globalAlpha = k; g.translate(0, (1-k)*30);
+  g.fillStyle = 'rgba(6,11,20,0.9)'; g.strokeStyle = 'rgba(' + (c.col ? hexRgb(c.col) : '227,235,244') + ',0.55)'; g.lineWidth = 3;
+  g.beginPath(); g.roundRect(X, Y, Wd, Hd, 26); g.fill(); g.stroke();
+  g.direction = 'rtl'; g.textAlign = 'right'; g.textBaseline = 'alphabetic';
+  let right = X + Wd - 34;
+  if (c.n){
+    g.fillStyle = c.col || '#ffb43b'; g.beginPath(); g.arc(right - 34, Y + 66, 34, 0, Math.PI*2); g.fill();
+    g.fillStyle = '#0a1220'; g.font = '700 40px ' + AR; g.textAlign = 'center'; g.direction = 'ltr'; g.fillText(c.n, right - 34, Y + 80);
+    g.direction = 'rtl'; g.textAlign = 'right'; right -= 88;
+  }
+  g.fillStyle = c.col || '#eef3f8'; g.font = '700 46px ' + AR;
+  g.fillText(c.title, right, Y + 82, right - X - 30);
+  g.fillStyle = '#c9d3de'; g.font = '400 34px ' + AR;
+  wrapLines(c.body, Wd - 68).slice(0, 2).forEach((ln, i) => g.fillText(ln, X + Wd - 34, Y + 145 + i*50));
+  g.restore();
+}
+function hexRgb(h){ const n = parseInt(h.slice(1), 16); return ((n>>16)&255) + ',' + ((n>>8)&255) + ',' + (n&255); }
+
+/* ================= ending: summary + device ticket ================= */
+function drawEnding(t){
+  if (t < 44.5) return;
+  const a = ease((t - 44.5)/0.7);
+  g.save();
+  g.fillStyle = 'rgba(6,11,20,' + 0.86*a + ')'; g.fillRect(0, 440, 1080, 1440);
+  // summary of the scenes
+  const sa = ease((t - 44.8)/0.6); g.globalAlpha = sa; g.translate(0, (1-sa)*40);
+  g.direction = 'rtl'; g.textAlign = 'right';
+  g.fillStyle = '#ffb43b'; g.font = '700 54px ' + AR; g.fillText('ملخص المراحل', 1000, 535);
+  const rows = [
+    ['1', 'مصدر AC', 'تيار يغيّر اتجاهه باستمرار', '#ffb43b'],
+    ['2', 'المحوّل', 'يخفض الجهد من 230 إلى 12 فولت', '#c7b6ff'],
+    ['3', 'القنطرة', 'أربعة دايودات توجّه التيار باتجاه واحد', '#3fd0ff'],
+    ['4', 'المكثّف', 'ينعّم النبضات إلى تيار مستمر', '#6dff9a']
+  ];
+  rows.forEach((r, i) => {
+    const ra = ease((t - 45.0 - i*0.35)/0.4); if (ra <= 0) return;
+    const y = 625 + i*92;
+    g.save(); g.globalAlpha = sa*ra; g.translate((1-ra)*-40, 0);
+    g.fillStyle = r[3]; g.beginPath(); g.arc(964, y - 14, 30, 0, Math.PI*2); g.fill();
+    g.fillStyle = '#0a1220'; g.font = '700 34px ' + AR; g.textAlign = 'center'; g.direction = 'ltr'; g.fillText(r[0], 964, y - 2);
+    g.direction = 'rtl'; g.textAlign = 'right';
+    g.fillStyle = '#eef3f8'; g.font = '700 40px ' + AR; g.fillText(r[1], 912, y);
+    const w1 = g.measureText(r[1]).width;
+    g.fillStyle = '#aebac8'; g.font = '400 32px ' + AR; g.fillText(r[2], 912 - w1 - 24, y);
+    g.restore();
+  });
+  // device ticket
+  const ta = ease((t - 47.0)/0.6);
+  if (ta > 0){
+    g.globalAlpha = ta; g.translate(0, (1-ta)*60 - (1-sa)*40);
+    const X = 90, Y = 1010, Wd = 900, Hd = 640;
+    g.fillStyle = '#111a28'; g.strokeStyle = '#ffb43b'; g.lineWidth = 3;
+    g.beginPath(); g.roundRect(X, Y, Wd, Hd, 24); g.fill(); g.stroke();
+    // ticket notches and tear line
+    g.fillStyle = 'rgba(6,11,20,1)';
+    [[X, Y + 120], [X + Wd, Y + 120]].forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 22, 0, Math.PI*2); g.fill(); });
+    g.setLineDash([12, 10]); g.strokeStyle = 'rgba(255,180,59,0.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(X + 30, Y + 120); g.lineTo(X + Wd - 30, Y + 120); g.stroke(); g.setLineDash([]);
+    g.direction = 'rtl'; g.textAlign = 'right';
+    g.fillStyle = '#ffb43b'; g.font = '700 48px ' + AR; g.fillText('بطاقة الجهاز', X + Wd - 40, Y + 78);
+    g.direction = 'ltr'; g.textAlign = 'left'; g.fillStyle = '#6dff9a'; g.font = '600 34px JBMono'; g.fillText('AC → DC', X + 40, Y + 76);
+    const spec = [
+      ['الجهاز', 'مقوّم قنطرة موجة كاملة', true],
+      ['الدخل', '230 V AC · 50 Hz'],
+      ['المحوّل', '230 V : 12 V rms'],
+      ['الدايودات', '4 × 1N4007'],
+      ['مكثّف التنعيم', '1000 µF'],
+      ['الحمل', '100 Ω'],
+      ['الخرج', '≈ 15.6 V DC']
+    ];
+    spec.forEach((r, i) => {
+      const y = Y + 190 + i*64;
+      g.strokeStyle = 'rgba(227,235,244,0.1)'; g.lineWidth = 1; if (i) { g.beginPath(); g.moveTo(X + 40, y - 44); g.lineTo(X + Wd - 40, y - 44); g.stroke(); }
+      g.direction = 'rtl'; g.textAlign = 'right'; g.fillStyle = '#8d9bad'; g.font = '400 32px ' + AR; g.fillText(r[0], X + Wd - 40, y);
+      if (r[2]){ g.fillStyle = '#eef3f8'; g.font = '600 32px ' + AR; g.direction = 'rtl'; g.textAlign = 'left'; g.fillText(r[1], X + 40, y); }
+      else { g.direction = 'ltr'; g.textAlign = 'left'; g.fillStyle = i === spec.length-1 ? '#6dff9a' : '#eef3f8'; g.font = '600 32px JBMono'; g.fillText(r[1], X + 40, y); }
+    });
+  }
+  g.restore();
+}
+
+/* ================= drawing helpers ================= */
+const cv = $('#c'), g = cv.getContext('2d');
+const COL = { amber:'#ffb43b', cyan:'#3fd0ff', green:'#6dff9a', lav:'#c7b6ff', chalk:'#e3ebf4' };
+const RGB = { amber:[255,180,59], cyan:[63,208,255], green:[109,255,154], lav:[199,182,255] };
+function glowSprite(rgb){
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.18, 'rgba(' + rgb + ',1)'); gr.addColorStop(0.45, 'rgba(' + rgb + ',0.35)'); gr.addColorStop(1, 'rgba(' + rgb + ',0)');
+  x.fillStyle = gr; x.fillRect(0,0,64,64); return c;
+}
+const SPR = {}; for (const k in RGB) SPR[k] = glowSprite(RGB[k]);
+const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x*x*(3-2*x);
+const prog = (t, a, b) => b <= a ? (t >= a ? 1 : 0) : ease((t-a)/(b-a));
+function strokePartial(pts, p, skip){
+  if (p <= 0) return;
+  let total = 0; for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
+  let remain = total*p;
+  g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length && remain > 0; i++){
+    const L = Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
+    const u = Math.min(1, remain/(L || 1)); remain -= L;
+    const x = pts[i-1][0] + (pts[i][0]-pts[i-1][0])*u, y = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*u;
+    if (skip === i-1) g.moveTo(x, y); else g.lineTo(x, y);
+  }
+  g.stroke();
+}
+function ring(x, y, t, t0, r0, r1, rgb, dur){
+  const u = (t - t0)/dur; if (u < 0 || u > 1) return;
+  g.strokeStyle = 'rgba(' + rgb + ',' + (1-u)*0.8 + ')'; g.lineWidth = 6*(1-u) + 1;
+  g.beginPath(); g.arc(x, y, r0 + (r1-r0)*ease(u), 0, Math.PI*2); g.stroke();
+}
+
+/* ================= simulation step ================= */
+const diodeLp = { D1:0, D2:0, D3:0, D4:0 };
+let lampB2 = 0, capOn = false;
+function stepSim(h){
+  S.f = fAt(simT);
+  if (!capOn && simT >= 28.6){ capOn = true; S.cap = true; Vc = vload; }
+  physics(h); branchCurrents();
+  for (const n of NAMES){ const P = PATHS[n]; const Iv = (n === 'CAP' && !capOn) ? 0 : (I[n] || 0); P.offset += clamp(Iv/IREF, -4, 4)*110*h; P.sumAbs += Math.abs(Iv)*h; }
+  for (const n in diodeLp) diodeLp[n] += (Math.min(1, (I[n] || 0)/IREF) - diodeLp[n])*Math.min(1, h/0.03);
+  lampB2 += (Math.pow(vload/(VP-1.4), 2) - lampB2)*Math.min(1, h/0.025);
+  record();
+}
+function pathColor(n, Iv){
+  const full = true, pos = vs >= 0;
+  switch (n){
+    case 'PRI': case 'PRI_INT': case 'SEC': return [Iv >= 0 ? 'amber' : 'cyan', 'lav'];
+    case 'D1': case 'D3': return ['amber','amber'];
+    case 'D2': case 'D4': return ['cyan','cyan'];
+    case 'RP1': case 'RN1': return [pos ? 'amber' : 'cyan', 'lav'];
+    case 'CAP': return [Iv >= 0 ? (pos ? 'amber' : 'cyan') : 'green', 'green'];
+    default: return [(S.cap && ib < iL*0.5) ? 'green' : (pos ? 'amber' : 'cyan'), S.cap ? 'green' : 'lav'];
+  }
+}
+
+/* ================= frame ================= */
+function drawFrame(t, simDt){
+  const frame = Math.min(EVT.spec.length-1, Math.round(t*FPS));
+  const kickE = hit(EVT.kick, t, 9), snareE = hit(EVT.snare, t, 10);
+  const hb = smooth(3, 10, S.f);
+  // background
+  g.fillStyle = '#0a1220'; g.fillRect(0,0,1080,1920);
+  const bgG = g.createRadialGradient(540, 980, 100, 540, 980, 1100);
+  bgG.addColorStop(0, 'rgba(40,70,110,' + (0.30 + 0.25*kickE) + ')'); bgG.addColorStop(1, 'rgba(10,18,32,0)');
+  g.fillStyle = bgG; g.fillRect(0,0,1080,1920);
+  g.strokeStyle = 'rgba(130,170,220,' + (0.06 + 0.07*kickE) + ')'; g.lineWidth = 1;
+  g.beginPath(); for (let x = 0; x <= 1080; x += 40){ g.moveTo(x+0.5, 0); g.lineTo(x+0.5, 1920); } for (let y = 0; y <= 1920; y += 40){ g.moveTo(0, y+0.5); g.lineTo(1080, y+0.5); } g.stroke();
+
+  // ---------- oscilloscope (top) ----------
+  const sp = prog(t, 0, 0.6);
+  const SX = 60, SY = 150, SW = 960, SH = 270;
+  g.save(); g.globalAlpha = sp;
+  g.fillStyle = 'rgba(4,8,14,0.85)'; g.strokeStyle = 'rgba(227,235,244,' + (0.25 + 0.5*snareE) + ')'; g.lineWidth = 3;
+  g.beginPath(); g.roundRect(SX, SY, SW, SH, 22); g.fill(); g.stroke();
+  g.strokeStyle = 'rgba(130,170,220,0.12)'; g.lineWidth = 1; g.beginPath();
+  for (let i = 1; i < 10; i++){ g.moveTo(SX + SW*i/10, SY+12); g.lineTo(SX + SW*i/10, SY+SH-12); }
+  for (let j = 1; j < 6; j++){ g.moveTo(SX+12, SY + SH*j/6); g.lineTo(SX+SW-12, SY + SH*j/6); } g.stroke();
+  const P0 = 24, pw = SW - 2*P0, ph = SH - 2*P0, ty = SY + P0, tx = SX + P0;
+  const yOf = v => ty + ph/2 - v/19*(ph/2);
+  const Wt = CYCLES / S.f, t0 = simT - Wt;
+  const xs2 = [], a1 = [], a2 = [], a3 = [];
+  let i = (bIdx - 1 + BUF) % BUF;
+  for (let c = 0; c < bCount; c++){ const tt = bT[i]; if (tt < t0) break; xs2.push(tx + (tt - t0)/Wt*pw); a1.push(yOf(bVs[i])); a2.push(yOf(bRect[i])); a3.push(yOf(bOut[i])); i = (i - 1 + BUF) % BUF; }
+  const line = (arr, col, w, dash) => { if (arr.length < 2) return; g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); g.moveTo(xs2[0], arr[0]); for (let k = 1; k < arr.length; k++) g.lineTo(xs2[k], arr[k]); g.stroke(); g.setLineDash([]); };
+  const zero = yOf(0);
+  g.strokeStyle = 'rgba(227,235,244,0.25)'; g.beginPath(); g.moveTo(tx, zero); g.lineTo(tx+pw, zero); g.stroke();
+  g.save(); g.beginPath(); g.rect(tx, ty, pw, zero-ty); g.clip(); line(a1, COL.amber, 4); g.restore();
+  g.save(); g.beginPath(); g.rect(tx, zero, pw, ty+ph-zero); g.clip(); line(a1, COL.cyan, 4); g.restore();
+  if (S.cap) line(a2, 'rgba(200,210,225,0.55)', 2.5, [10,8]);
+  g.shadowColor = COL.green; g.shadowBlur = 14; line(a3, COL.green, 5); g.shadowBlur = 0;
+  if (a3.length){ g.fillStyle = '#fff'; g.beginPath(); g.arc(xs2[0], a3[0], 6, 0, Math.PI*2); g.fill(); }
+  g.restore();
+
+  // ---------- circuit (pulses with the kick) ----------
+  g.save();
+  const sc2 = 1 + 0.008*kickE*(t >= 4 ? 1 : 0);
+  const cam = camAt(t);
+  g.beginPath(); g.rect(0, 440, 1080, 990); g.clip();
+  g.translate(540, 935); g.scale(cam.s*sc2, cam.s*sc2); g.translate(-cam.x, -cam.y);
+  g.lineCap = 'round'; g.lineJoin = 'round';
+
+  // wires
+  for (const n of NAMES){
+    const P = PATHS[n]; if (P.hidden) continue;
+    const p = prog(t, P.draw[0], P.draw[1]); if (p <= 0) continue;
+    g.strokeStyle = 'rgba(227,235,244,0.82)'; g.lineWidth = n === 'LOAD' ? 3 : 4.5;
+    strokePartial(P.pts, p, P.skip);
+  }
+  // junction dots
+  g.fillStyle = COL.chalk;
+  [[380,960],[700,960],[540,820],[540,1100],[540,1190],[760,1450]].forEach(([x,y]) => { if (t > 2.9){ g.beginPath(); g.arc(x, y, 8*prog(t, 2.9, 3.2), 0, Math.PI*2); g.fill(); } });
+  if (capOn || t >= 28.4){ [[330,1190],[330,1450]].forEach(([x,y]) => { g.beginPath(); g.arc(x, y, 8*prog(t, 28.4, 28.6), 0, Math.PI*2); g.fill(); }); }
+
+  // transformer core
+  const cp = prog(t, 1.3, 1.8);
+  if (cp > 0){
+    const flux = -Math.cos(phi);
+    const ck = hb > 0.5 ? 'lav' : (flux >= 0 ? 'amber' : 'cyan');
+    const fi = t < 4 ? 0 : (1-hb)*Math.abs(flux) + hb*0.6;
+    g.shadowColor = COL[ck]; g.shadowBlur = 25*fi;
+    g.strokeStyle = 'rgba(' + RGB[ck] + ',' + (0.35 + 0.65*fi) + ')'; g.lineWidth = 7;
+    g.beginPath(); g.moveTo(370, 692); g.lineTo(370 + 340*cp, 692); g.moveTo(710, 712); g.lineTo(710 - 340*cp, 712); g.stroke();
+    g.shadowBlur = 0;
+  }
+
+  // AC source
+  const srcP = prog(t, 0.25, 0.9);
+  if (srcP > 0){
+    g.fillStyle = '#0a1220'; g.beginPath(); g.arc(540, 520, 70, 0, Math.PI*2); g.fill();
+    g.strokeStyle = COL.chalk; g.lineWidth = 5; g.beginPath(); g.arc(540, 520, 70, -Math.PI/2, -Math.PI/2 + Math.PI*2*srcP); g.stroke();
+    const blur = smooth(1.5, 5, S.f);
+    const col = vs >= 0 ? 'amber' : 'cyan';
+    if (blur > 0){ g.fillStyle = 'rgba(199,182,255,' + 0.35*blur + ')'; g.beginPath(); g.arc(540, 520, 52, 0, Math.PI*2); g.fill(); }
+    const ex = 540 + 52*Math.cos(phi), ey = 520 - 52*Math.sin(phi);
+    g.globalAlpha = srcP*(1 - blur);
+    g.strokeStyle = COL[col]; g.lineWidth = 6; g.beginPath(); g.moveTo(540, 520); g.lineTo(ex, ey); g.stroke();
+    g.fillStyle = COL[col]; g.beginPath(); g.arc(ex, ey, 9, 0, Math.PI*2); g.fill();
+    // projection of the phasor = instantaneous voltage
+    g.setLineDash([5,6]); g.strokeStyle = 'rgba(227,235,244,0.45)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ex, ey); g.lineTo(625, ey); g.stroke(); g.setLineDash([]);
+    g.globalAlpha = 1;
+    g.fillStyle = COL.chalk; g.beginPath(); g.arc(540, 520, 7, 0, Math.PI*2); g.fill();
+  }
+
+  // capacitor (drops in at 28.0, lands 28.6 on the impact)
+  if (t >= 28.0){
+    const u = prog(t, 28.0, 28.6), drop = (1 - u)*(1-u)*-320;
+    const bounce = t > 28.6 ? 10*Math.abs(Math.sin((t-28.6)*16))*Math.exp(-(t-28.6)*7) : 0;
+    g.save(); g.translate(0, drop - bounce); g.globalAlpha = Math.min(1, u*1.5);
+    const vc = capOn ? Vc/VP : 0;
+    g.shadowColor = COL.green; g.shadowBlur = 30*vc;
+    g.strokeStyle = vc > 0.05 ? 'rgba(' + RGB.green + ',' + (0.5 + 0.5*vc) + ')' : COL.chalk; g.lineWidth = 8;
+    g.beginPath(); g.moveTo(288, 1300); g.lineTo(372, 1300); g.stroke();
+    g.beginPath(); g.moveTo(288, 1330); g.quadraticCurveTo(330, 1312, 372, 1330); g.stroke();
+    g.shadowBlur = 0;
+    // charge gauge
+    g.strokeStyle = 'rgba(227,235,244,0.4)'; g.lineWidth = 2; g.strokeRect(398, 1250, 18, 130);
+    g.fillStyle = COL.green; const hgt = 126*Math.min(1, vc); g.fillRect(400, 1378 - hgt, 14, hgt);
+    g.restore();
+  }
+
+  // particles
+  const realDt = 1/FPS;
+  for (const n of NAMES){
+    const P = PATHS[n];
+    const visible = !P.hidden && (n !== 'CAP' || capOn) && t >= 3.5;
+    const avg = P.sumAbs/Math.max(simDt, 1e-6); P.sumAbs = 0;
+    P.bright += ((visible ? Math.min(1, avg/IREF) : 0) - P.bright)*Math.min(1, realDt/0.08);
+    if (!visible) continue;
+    const fadeIn = prog(t, 3.5, 4.0);
+    const k = (0.16 + 0.84*P.bright)*fadeIn;
+    const [ca, cb] = pathColor(n, I[n] || 0);
+    let off = P.offset % P.len; if (off < 0) off += P.len;
+    for (let j = 0; j < P.n; j++){
+      let s = j*P.sp + off; if (s >= P.len) s -= P.len;
+      const [x, y, seg] = ptAt(P, s);
+      if (P.skip === seg) continue;
+      const size = 30;
+      if (hb < 1){ g.globalAlpha = k*(1-hb); g.drawImage(SPR[ca], x - size/2, y - size/2, size, size); }
+      if (hb > 0){ g.globalAlpha = k*hb; g.drawImage(SPR[cb], x - size/2, y - size/2, size, size); }
+    }
+  }
+  g.globalAlpha = 1;
+
+  // diodes: triangle points the way current may flow, bar = cathode
+  const sqE = t < 38 ? hit(EVT.sq, t, 14) : 0, triE = t < 38 ? hit(EVT.tri, t, 14) : 0;
+  for (const n of ['D1','D2','D3','D4']){
+    const P = PATHS[n], p = prog(t, P.draw[1] - 0.25, P.draw[1] + 0.1); if (p <= 0) continue;
+    const [a, b] = [P.pts[0], P.pts[1]], mx = (a[0]+b[0])/2, my = (a[1]+b[1])/2, ang = Math.atan2(b[1]-a[1], b[0]-a[0]);
+    const lp = diodeLp[n]*prog(t, 3.5, 4.0), col = P.diode, ev = col === 'amber' ? sqE : triE;
+    const glow = Math.min(1, lp*(0.75 + 0.5*ev*(lp > 0.2 ? 1 : 0)));
+    if (glow > 0.02){ g.globalAlpha = glow; const hs = 150 + 60*ev*lp; g.drawImage(SPR[col], mx - hs/2, my - hs/2, hs, hs); g.globalAlpha = 1; }
+    g.save(); g.translate(mx, my); g.rotate(ang); g.scale(p, p);
+    g.fillStyle = glow > 0.05 ? 'rgba(' + RGB[col] + ',' + (0.25 + 0.75*glow) + ')' : '#0a1220';
+    g.strokeStyle = COL.chalk; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(-22, -24); g.lineTo(-22, 24); g.lineTo(20, 0); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(22, -26); g.lineTo(22, 26); g.lineWidth = 6; g.stroke();
+    g.restore();
+  }
+
+  // lamp
+  const lpP = prog(t, 3.3, 3.7);
+  if (lpP > 0){
+    const B = Math.min(1, lampB2)*prog(t, 3.6, 4.0), mel = t >= 38 && t < 46 ? hit(EVT.sq, t, 10) : 0;
+    if (B > 0.02){
+      const R = 60 + 120*B;
+      const lg = g.createRadialGradient(760, 1320, 10, 760, 1320, R*1.8);
+      lg.addColorStop(0, 'rgba(255,214,130,' + 0.85*B + ')'); lg.addColorStop(0.4, 'rgba(255,180,80,' + 0.35*B + ')'); lg.addColorStop(1, 'rgba(255,170,60,0)');
+      g.fillStyle = lg; g.beginPath(); g.arc(760, 1320, R*1.8, 0, Math.PI*2); g.fill();
+      g.strokeStyle = 'rgba(255,214,130,' + B + ')'; g.lineWidth = 5;
+      for (let r = 0; r < 12; r++){ const an = r*Math.PI/6 + 0.26; const r0 = 72, r1 = 72 + 18 + 50*B + 14*mel;
+        g.beginPath(); g.moveTo(760 + r0*Math.cos(an), 1320 + r0*Math.sin(an)); g.lineTo(760 + r1*Math.cos(an), 1320 + r1*Math.sin(an)); g.stroke(); }
+    }
+    g.fillStyle = 'rgba(10,18,32,' + (0.85 - 0.6*B) + ')'; g.beginPath(); g.arc(760, 1320, 56, 0, Math.PI*2); g.fill();
+    g.strokeStyle = COL.chalk; g.lineWidth = 5; g.beginPath(); g.arc(760, 1320, 56, -Math.PI/2, -Math.PI/2 + Math.PI*2*lpP); g.stroke();
+    g.strokeStyle = B > 0.05 ? 'rgba(255,240,200,' + (0.6 + 0.4*B) + ')' : 'rgba(227,235,244,0.82)'; g.lineWidth = 3;
+    strokePartial(PATHS.LOAD.pts.slice(2, 8), lpP);
+  }
+
+  // music-driven rings
+  EVT.bell.forEach(tb => { if (tb >= 22 && tb < 28) ring(760, 1320, t, tb, 60, 200, '255,214,130', 0.7); });
+  ring(330, 1315, t, 28.6, 30, 320, RGB.green.join(','), 0.9);
+  ring(760, 1320, t, 38.0, 60, 520, RGB.green.join(','), 1.1);
+  ring(540, 985, t, 38.0, 100, 900, '227,235,244', 1.3);
+  ring(760, 1320, t, 46.0, 60, 380, '255,214,130', 1.2);
+  g.restore();
+
+  // ---------- music visualiser (bottom) ----------
+  const spec = EVT.spec[frame], base = 1760, bw = 20, gap = 7, n = spec.length, x0 = 540 - (n*(bw+gap) - gap)/2;
+  for (let b = 0; b < n; b++){
+    const v = spec[b], h1 = 8 + 120*v, u = b/(n-1);
+    const r = Math.round(255 + (63-255)*u), gg = Math.round(180 + (208-180)*u), bb = Math.round(59 + (255-59)*u);
+    g.fillStyle = 'rgba(' + r + ',' + gg + ',' + bb + ',0.7)';
+    g.beginPath(); g.roundRect(x0 + b*(bw+gap), base - h1, bw, h1, 6); g.fill();
+    g.fillStyle = 'rgba(' + r + ',' + gg + ',' + bb + ',0.18)';
+    g.beginPath(); g.roundRect(x0 + b*(bw+gap), base + 6, bw, h1*0.45, 6); g.fill();
+  }
+
+  drawCaption(t);
+  drawEnding(t);
+
+  // flashes and fade
+  const fl = Math.max(0.55*Math.exp(-(t-28.6)*14)*(t >= 28.6 ? 1 : 0), 0.7*Math.exp(-(t-38)*7)*(t >= 38 ? 1 : 0), 0.35*Math.exp(-(t-46)*8)*(t >= 46 ? 1 : 0));
+  if (fl > 0.01){ g.fillStyle = 'rgba(255,255,255,' + fl + ')'; g.fillRect(0,0,1080,1920); }
+  if (t > 52.8){ g.fillStyle = 'rgba(10,18,32,' + Math.min(1, (t-52.8)/1.2) + ')'; g.fillRect(0,0,1080,1920); }
+  if (t < 0.15){ g.fillStyle = 'rgba(10,18,32,' + (1 - t/0.15) + ')'; g.fillRect(0,0,1080,1920); }
+}
+
+window.renderAt = function(t){
+  const simDt = t - simT;
+  if (simDt > 0){ const steps = Math.max(1, Math.ceil(simDt/5e-5)), h = simDt/steps; for (let k = 0; k < steps; k++) stepSim(h); }
+  drawFrame(t, Math.max(simDt, 1e-6));
+};
+window.grab = q => cv.toDataURL('image/jpeg', q || 0.93);
+window.DUR = 54;
+document.fonts.load('600 40px "Plex Arabic"').then(() => Promise.all(['400','700'].map(w => document.fonts.load(w + ' 40px "Plex Arabic"'))).then(() => document.fonts.load('600 40px JBMono')).then(() => { window.ready = true; }));
+})();
+</script>
+</body></html>

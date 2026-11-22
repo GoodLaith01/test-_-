@@ -7,14 +7,14 @@ Story told by the music:
   28-30 s capacitor drops in (whoosh + impact)
   30-38 s frequency sweep 0.5 -> 50 Hz: one note per half-cycle, so the arpeggio speeds up with the AC
   38-46 s DC drop: the sub-bass holds ONE steady note (that's DC), bright major groove
-  46-50 s outro
+  46-54 s outro (summary + device card)
 Usage: python3 music.py out.wav [events.json]
 """
 import sys, wave
 import numpy as np
 
 SR = 44100
-DUR = 50.0
+DUR = 54.0
 N = int(SR * DUR)
 L = np.zeros(N); R = np.zeros(N)
 rng = np.random.default_rng(7)
@@ -203,15 +203,19 @@ for b in range(4):
     for i in range(8):
         note(t0 + i * 0.25, melody[b * 8 + i], 0.2, 'square', 0.07, pan=0.1, a=0.003, d=0.1, s=0.55)
 
-# outro 46-50
+# outro 46-54: summary and device card on screen
 kick(46, 1.0); clap(46)
-pad(46, (57, 61, 64, 69), 3.2, gain=0.06, cutoff=1600)
-note(46, 33, 3.0, 'sine', 0.3, a=0.01, d=1.0, s=0.4, r=0.8)
+pad(46, (57, 61, 64, 69), 3.9, gain=0.06, cutoff=1600)
+pad(50, (50, 54, 57, 62), 3.6, gain=0.055, cutoff=1400)
+note(46, 33, 3.8, 'sine', 0.3, a=0.01, d=1.2, s=0.45, r=0.6)
+note(50, 38, 3.4, 'sine', 0.26, a=0.05, d=1.2, s=0.45, r=0.8)
 for i, m in enumerate([69, 73, 76, 81]): bell(46.5 + i * 0.25, m, 0.1, (-0.3, -0.1, 0.1, 0.3)[i])
+for i, m in enumerate([81, 76, 73, 69]): bell(50.0 + i * 0.25, m, 0.07, (0.3, 0.1, -0.1, -0.3)[i])
+bell(52.0, 57, 0.08)
 
 # ---------- mix ----------
 L += PL * duck_env; R += PR * duck_env
-fade = np.ones(N); fn = int(1.2 * SR); fade[-fn:] = np.linspace(1, 0, fn) ** 1.5
+fade = np.ones(N); fn = int(1.6 * SR); fade[-fn:] = np.linspace(1, 0, fn) ** 1.5
 fi = int(0.05 * SR); fade[:fi] = np.linspace(0, 1, fi)
 mix = np.stack([L, R], 1) * fade[:, None]
 mix = np.tanh(mix * 1.6) / np.tanh(1.6)
