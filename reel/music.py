@@ -8,7 +8,7 @@ Story told by the music:
   30-38 s frequency sweep 0.5 -> 50 Hz: one note per half-cycle, so the arpeggio speeds up with the AC
   38-46 s DC drop: the sub-bass holds ONE steady note (that's DC), bright major groove
   46-50 s outro
-Usage: python3 music.py out.wav
+Usage: python3 music.py out.wav [events.json]
 """
 import sys, wave
 import numpy as np
@@ -19,6 +19,7 @@ N = int(SR * DUR)
 L = np.zeros(N); R = np.zeros(N)
 rng = np.random.default_rng(7)
 BEAT = 0.5
+EV = {'kick': [], 'snare': [], 'bell': [], 'sq': [], 'tri': []}  # event times, exported for the animation
 
 def mtof(m): return 440.0 * 2 ** ((m - 69) / 12)
 
@@ -55,22 +56,27 @@ def add(t0, sig, gain=1.0, pan=0.0):
     L[i0:i0 + len(sig)] += sig * gl; R[i0:i0 + len(sig)] += sig * gr
 
 def note(t0, midi, dur, kind='square', gain=0.2, pan=0.0, a=0.004, d=0.12, s=0.5, r=0.04):
+    if kind == 'square': EV['sq'].append(t0)
+    if kind == 'tri': EV['tri'].append(t0)
     n = int((dur + r) * SR)
     add(t0, osc(kind, mtof(midi), n) * env(n, a, d, s, r, hold=dur), gain, pan)
 
 # ---------- drums ----------
 def kick(t0, g=0.9):
+    EV['kick'].append(t0)
     n = int(0.35 * SR); t = np.arange(n) / SR
     f = 45 + 110 * np.exp(-t * 28)
     add(t0, np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 9) * g)
     duck(t0)
 
 def snare(t0, g=0.35):
+    EV['snare'].append(t0)
     n = int(0.25 * SR); t = np.arange(n) / SR
     nz = rng.standard_normal(n); nz = nz - lowpass(nz, 1500)
     add(t0, (nz * np.exp(-t * 18) + 0.5 * np.sin(2 * np.pi * 190 * t) * np.exp(-t * 25)) * g)
 
 def clap(t0, g=0.3):
+    EV['snare'].append(t0)
     for k, dt in enumerate((0, 0.011, 0.022)):
         n = int(0.18 * SR); t = np.arange(n) / SR
         nz = rng.standard_normal(n); nz = nz - lowpass(nz, 1200)
@@ -98,6 +104,7 @@ def pad(t0, midis, dur, gain=0.06, cutoff=1400):
     PL[i0:i0 + len(sig)] += sig * gain; PR[i0:i0 + len(sig)] += sig * gain * 0.95
 
 def bell(t0, midi, g=0.12, pan=0.0):
+    EV['bell'].append(t0)
     n = int(1.2 * SR); t = np.arange(n) / SR; f = mtof(midi)
     sig = (np.sin(2 * np.pi * f * t) + 0.5 * np.sin(2 * np.pi * f * 2.76 * t) * np.exp(-t * 6)) * np.exp(-t * 3.5)
     add(t0, sig, g, pan)
@@ -212,4 +219,22 @@ mix /= np.max(np.abs(mix)) / 0.89
 with wave.open(sys.argv[1] if len(sys.argv) > 1 else 'music.wav', 'wb') as w:
     w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR)
     w.writeframes((mix * 32767).astype('<i2').tobytes())
-print('ok', DUR, 's')
+# ---------- export events + per-frame spectrum for the animation ----------
+import json
+mono = mix.mean(1); FPS = 30; WIN = 2048; NB = 32
+edges = np.geomspace(40, 12000, NB + 1)
+freqs = np.fft.rfftfreq(WIN, 1 / SR); win = np.hanning(WIN)
+spec = []; prev = np.zeros(NB)
+for f in range(int(DUR * FPS)):
+    c = int(f / FPS * SR); seg = mono[max(0, c - WIN // 2): c + WIN // 2]
+    seg = np.pad(seg, (0, WIN - len(seg)))
+    mag = np.abs(np.fft.rfft(seg * win))
+    bands = np.array([mag[(freqs >= edges[i]) & (freqs < edges[i + 1])].mean() if np.any((freqs >= edges[i]) & (freqs < edges[i + 1])) else 0 for i in range(NB)])
+    db = np.clip((20 * np.log10(bands + 1e-9) + 10) / 50, 0, 1)
+    prev = np.where(db > prev, db, prev * 0.8 + db * 0.2)
+    spec.append([round(float(x), 3) for x in prev])
+out = {k: sorted(round(t, 4) for t in v) for k, v in EV.items()}
+out['spec'] = spec
+pathlib_out = (sys.argv[2] if len(sys.argv) > 2 else 'events.json')
+with open(pathlib_out, 'w') as fh: json.dump(out, fh, separators=(',', ':'))
+print('ok', DUR, 's', {k: len(v) for k, v in EV.items()})
