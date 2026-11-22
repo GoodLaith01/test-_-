@@ -97,6 +97,11 @@ input[type=range]:disabled{opacity:.4}
 .try{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
 .try h2{font-size:22px;font-weight:600;margin-bottom:6px}
 .try ol{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px;max-width:110ch}
+.reel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.reel-copy{flex:1 1 320px;min-width:0;max-width:60ch}
+.reel-copy h2{font-size:26px;font-weight:600;margin-bottom:8px}
+.reel-copy p{margin:0 0 10px}
+.reel-video{width:min(100%,340px);aspect-ratio:9/16;max-width:100%;border-radius:12px;background:#0a1220;display:block}
 @media (max-width:520px){.caption{font-size:17px}.legend{font-size:11.5px}.hintdrag{display:none}}
 </style>
 
@@ -144,6 +149,10 @@ input[type=range]:disabled{opacity:.4}
           <button class="btn" id="restart">Restart sweep</button>
           <button class="btn" id="resetView">Reset view</button>
           <button class="btn" id="musicBtn" aria-pressed="false">Music: off</button>
+        </div>
+        <div class="ctl">
+          <span class="k">View</span>
+          <div class="seg" data-key="view"><button aria-pressed="true" data-v="3d">3D model</button><button aria-pressed="false" data-v="2d">2D drawing</button></div>
         </div>
         <div class="ctl">
           <label for="freq">Frequency <output id="freqOut">0.20 Hz</output></label>
@@ -243,6 +252,15 @@ input[type=range]:disabled{opacity:.4}
       <li>At 50 Hz, change C and R. A larger C or a larger R (smaller current) gives less ripple, as the formula predicts.</li>
       <li>Switch to electron flow. Electrons move opposite to conventional current, against each diode arrow.</li>
     </ol>
+  </section>
+
+  <section class="reel">
+    <div class="reel-copy">
+      <h2>Watch the Reel</h2>
+      <p>The whole story in 50 seconds, drawn in 2D and timed to an original soundtrack. The bass switches high and low like AC, speeds up with the frequency, and holds one steady note once the output becomes DC.</p>
+      <p class="sub">Every diode flash, lamp ring and pulse lands on a beat or note of the music. Turn the sound on.</p>
+    </div>
+    <video class="reel-video" controls playsinline preload="metadata" poster="reel-2d-poster.jpg" src="ac-to-dc-reel-2d.mp4"></video>
   </section>
 </div>
 
@@ -766,6 +784,7 @@ document.querySelectorAll('.seg').forEach(seg => {
     else if (key === 'cap'){ S.cap = v === '1'; if (S.cap) Vc = vload; }
     else if (key === 'ts') S.ts = parseFloat(v);
     else if (key === 'electron'){ S.electron = v === '1'; $('#flowNote').textContent = S.electron ? 'Dots show electron flow (− → +)' : 'Dots show conventional current (+ → −)'; }
+    else if (key === 'view'){ S.view = v; Schem.cv.hidden = v !== '2d'; renderer.domElement.style.visibility = v === '2d' ? 'hidden' : ''; $('.hintdrag').hidden = v === '2d'; }
     else if (key === 'fEnd'){ S.fEnd = parseFloat(v); if (S.auto){ S.rampT = S.rampDur*Math.log(S.f/F_MIN)/Math.log(S.fEnd/F_MIN); } }
     setSeg(key, v); applyTopology(); uiDirty = true;
   });
@@ -831,6 +850,156 @@ function updateUI(){
   const dsc = describe();
   $('#capTxt').textContent = dsc.t; $('#capDot').style.color = dsc.c; $('#nowTxt').textContent = dsc.d;
 }
+
+/* ---------------- 2D drawing view: the same simulation drawn as a glowing schematic ---------------- */
+const Schem = (() => {
+  const cv = document.createElement('canvas');
+  cv.hidden = true; cv.setAttribute('aria-label', '2D schematic of the rectifier with animated current');
+  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
+  host.insertBefore(cv, renderer.domElement.nextSibling);
+  const g = cv.getContext('2d');
+  const RGB = { amber:[255,180,59], cyan:[63,208,255], green:[109,255,154], lav:[199,182,255] };
+  const SPR = {};
+  for (const k in RGB){
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+    const gr = x.createRadialGradient(32,32,0,32,32,32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.18, 'rgba(' + RGB[k] + ',1)'); gr.addColorStop(0.45, 'rgba(' + RGB[k] + ',0.35)'); gr.addColorStop(1, 'rgba(' + RGB[k] + ',0)');
+    x.fillStyle = gr; x.fillRect(0,0,64,64); SPR[k] = c;
+  }
+  function coil(x0, x1, y, n, down){
+    const w = (x1-x0)/n, r = w/2, pts = [];
+    for (let k = 0; k < n; k++){ const cx = x0 + r + w*k;
+      for (let i = (k ? 1 : 0); i <= 16; i++){ const u = i/16, th = down ? Math.PI - u*Math.PI : Math.PI + u*Math.PI; pts.push([cx + r*Math.cos(th), y + r*Math.sin(th)]); } }
+    return pts;
+  }
+  const pri = coil(380, 700, 640, 5, true), sec = coil(380, 700, 770, 4, false);
+  const hop = []; for (let i = 0; i <= 12; i++){ const th = -Math.PI*i/12; hop.push([700 + 14*Math.cos(th), 820 + 14*Math.sin(th)]); }
+  const P = {
+    PRI:  { pts:[[470,520],[380,520],[380,640]].concat(pri.slice(1), [[700,520],[610,520]]) },
+    SEC:  { pts:[[700,960],[700,770]].concat(sec.slice().reverse().slice(1), [[380,960]]) },
+    D1:   { pts:[[380,960],[540,1100]], diode:'amber' },
+    D2:   { pts:[[700,960],[540,1100]], diode:'cyan' },
+    D3:   { pts:[[540,820],[700,960]], diode:'amber' },
+    D4:   { pts:[[540,820],[380,960]], diode:'cyan' },
+    RP1:  { pts:[[540,1100],[540,1190]] },
+    LOAD: { pts:[[540,1190],[760,1190],[760,1264],[745,1290],[775,1310],[745,1330],[775,1350],[760,1376],[760,1450]] },
+    RN1:  { pts:[[760,1450],[880,1450],[880,820]].concat(hop, [[540,820]]) },
+    CAP:  { pts:[[540,1190],[330,1190],[330,1300],[330,1322],[330,1450],[760,1450]], skip:2 }
+  };
+  const NAMES = Object.keys(P);
+  for (const n of NAMES){ const p = P[n]; p.name = n; p.cum = [0];
+    for (let i = 1; i < p.pts.length; i++) p.cum.push(p.cum[i-1] + Math.hypot(p.pts[i][0]-p.pts[i-1][0], p.pts[i][1]-p.pts[i-1][1]));
+    p.len = p.cum[p.cum.length-1]; p.n = Math.max(2, Math.round(p.len/28)); p.sp = p.len/p.n; p.offset = 0; p.sumAbs = 0; p.bright = 0; }
+  const active = n => !((n === 'D2' || n === 'D4') && S.mode === 'half') && !(n === 'CAP' && !S.cap);
+  function ptAt(p, s){
+    const c = p.cum; let lo = 0, hi = c.length-1;
+    while (hi - lo > 1){ const m = (lo+hi) >> 1; if (c[m] <= s) lo = m; else hi = m; }
+    const u = (s - c[lo])/((c[hi]-c[lo]) || 1);
+    return [p.pts[lo][0] + (p.pts[hi][0]-p.pts[lo][0])*u, p.pts[lo][1] + (p.pts[hi][1]-p.pts[lo][1])*u, lo];
+  }
+  function step(h, dir){
+    for (const n of NAMES){ const p = P[n]; const Iv = active(n) ? (I[n] || 0) : 0; p.offset += clamp(Iv/IREF, -4, 4)*110*dir*h; p.sumAbs += Math.abs(Iv)*h; }
+  }
+  function colorOf(n, Iv){
+    const pos = vs >= 0, full = S.mode === 'full';
+    switch (n){
+      case 'PRI': case 'SEC': return [Iv >= 0 ? 'amber' : 'cyan', 'lav'];
+      case 'D1': case 'D3': return ['amber','amber'];
+      case 'D2': case 'D4': return ['cyan','cyan'];
+      case 'RP1': case 'RN1': return [full ? (pos ? 'amber' : 'cyan') : 'amber', full ? 'lav' : 'amber'];
+      case 'CAP': return [Iv >= 0 ? (full ? (pos ? 'amber' : 'cyan') : 'amber') : 'green', 'green'];
+      default: return [(S.cap && ib < iL*0.5) ? 'green' : (full ? (pos ? 'amber' : 'cyan') : 'amber'), S.cap ? 'green' : (full ? 'lav' : 'amber')];
+    }
+  }
+  function line(pts, skip){ g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++){ if (skip === i-1) g.moveTo(pts[i][0], pts[i][1]); else g.lineTo(pts[i][0], pts[i][1]); } g.stroke(); }
+  function draw(realDt, simDt){
+    const r = host.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(r.width*dpr)), h = Math.max(1, Math.round(r.height*dpr));
+    if (cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    g.setTransform(1,0,0,1,0,0);
+    g.fillStyle = '#0a1220'; g.fillRect(0,0,w,h);
+    g.strokeStyle = 'rgba(130,170,220,0.07)'; g.lineWidth = 1; g.beginPath();
+    const gs = 32*dpr; for (let x = 0; x <= w; x += gs){ g.moveTo(x+0.5, 0); g.lineTo(x+0.5, h); } for (let y = 0; y <= h; y += gs){ g.moveTo(0, y+0.5); g.lineTo(w, y+0.5); } g.stroke();
+    // fit the drawing between the caption (top) and the legend (bottom); turn it sideways on wide screens
+    const top = 48*dpr, bottom = ($('#legend').offsetHeight + 20)*dpr, ah = h - top - bottom;
+    const land = w > ah*1.1, BW = 800, BH = 1180;
+    const s = land ? Math.min(w/BH, ah/BW)*0.95 : Math.min(w/BW, ah/BH)*0.95;
+    g.translate(w/2, top + ah/2); if (land) g.rotate(-Math.PI/2); g.scale(s, s); g.translate(-590, -940);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    const hb = smooth(3, 10, S.f*S.ts);
+    // wires
+    g.strokeStyle = 'rgba(227,235,244,0.82)';
+    for (const n of NAMES){ if (!active(n)) continue; g.lineWidth = n === 'LOAD' ? 3 : 4.5; line(P[n].pts, P[n].skip); }
+    g.fillStyle = '#e3ebf4';
+    const dots = [[380,960],[700,960],[540,820],[540,1100],[540,1190],[760,1450]].concat(S.cap ? [[330,1190],[330,1450]] : []);
+    dots.forEach(([x,y]) => { g.beginPath(); g.arc(x, y, 8, 0, Math.PI*2); g.fill(); });
+    // transformer core glows with the magnetic flux
+    const flux = -Math.cos(phi), ck = hb > 0.5 ? 'lav' : (flux >= 0 ? 'amber' : 'cyan'), fi = (1-hb)*Math.abs(flux) + hb*0.6;
+    g.shadowColor = 'rgb(' + RGB[ck] + ')'; g.shadowBlur = 25*fi;
+    g.strokeStyle = 'rgba(' + RGB[ck] + ',' + (0.35 + 0.65*fi) + ')'; g.lineWidth = 7;
+    g.beginPath(); g.moveTo(370, 692); g.lineTo(710, 692); g.moveTo(370, 712); g.lineTo(710, 712); g.stroke(); g.shadowBlur = 0;
+    // AC source with rotating phasor
+    g.fillStyle = '#0a1220'; g.beginPath(); g.arc(540, 520, 70, 0, Math.PI*2); g.fill();
+    g.strokeStyle = '#e3ebf4'; g.lineWidth = 5; g.stroke();
+    const blur = smooth(1.5, 5, S.f*S.ts), pc = vs >= 0 ? 'amber' : 'cyan';
+    if (blur > 0){ g.fillStyle = 'rgba(199,182,255,' + 0.35*blur + ')'; g.beginPath(); g.arc(540, 520, 52, 0, Math.PI*2); g.fill(); }
+    const ex = 540 + 52*Math.cos(phi), ey = 520 - 52*Math.sin(phi);
+    g.globalAlpha = 1 - blur; g.strokeStyle = 'rgb(' + RGB[pc] + ')'; g.fillStyle = g.strokeStyle; g.lineWidth = 6;
+    g.beginPath(); g.moveTo(540, 520); g.lineTo(ex, ey); g.stroke(); g.beginPath(); g.arc(ex, ey, 9, 0, Math.PI*2); g.fill(); g.globalAlpha = 1;
+    // capacitor plates glow with stored charge, plus a charge gauge
+    if (S.cap){
+      const vc = clamp(Vc/VP, 0, 1);
+      g.shadowColor = 'rgb(' + RGB.green + ')'; g.shadowBlur = 30*vc;
+      g.strokeStyle = vc > 0.05 ? 'rgba(' + RGB.green + ',' + (0.5 + 0.5*vc) + ')' : '#e3ebf4'; g.lineWidth = 8;
+      g.beginPath(); g.moveTo(288, 1300); g.lineTo(372, 1300); g.stroke();
+      g.beginPath(); g.moveTo(288, 1330); g.quadraticCurveTo(330, 1312, 372, 1330); g.stroke(); g.shadowBlur = 0;
+      g.strokeStyle = 'rgba(227,235,244,0.4)'; g.lineWidth = 2; g.strokeRect(398, 1250, 18, 130);
+      g.fillStyle = 'rgb(' + RGB.green + ')'; g.fillRect(400, 1378 - 126*vc, 14, 126*vc);
+    }
+    // moving charges
+    for (const n of NAMES){
+      const p = P[n], avg = p.sumAbs/Math.max(simDt, 1e-6); p.sumAbs = 0;
+      p.bright += ((active(n) ? Math.min(1, avg/IREF) : 0) - p.bright)*Math.min(1, realDt/0.08);
+      if (!active(n)) continue;
+      const k = 0.16 + 0.84*p.bright, [ca, cb] = colorOf(n, I[n] || 0);
+      let off = p.offset % p.len; if (off < 0) off += p.len;
+      for (let j = 0; j < p.n; j++){
+        let sv = j*p.sp + off; if (sv >= p.len) sv -= p.len;
+        const [x, y, seg] = ptAt(p, sv); if (p.skip === seg) continue;
+        if (hb < 1){ g.globalAlpha = k*(1-hb); g.drawImage(SPR[ca], x - 15, y - 15, 30, 30); }
+        if (hb > 0){ g.globalAlpha = k*hb; g.drawImage(SPR[cb], x - 15, y - 15, 30, 30); }
+      }
+    }
+    g.globalAlpha = 1;
+    // diodes: the triangle points the way current may pass
+    for (const n of ['D1','D2','D3','D4']){
+      if (!active(n) || (n === 'D3' && S.mode === 'half')) continue;
+      const [a, b] = P[n].pts, mx = (a[0]+b[0])/2, my = (a[1]+b[1])/2, col = P[n].diode, lp = clamp(diodes[n].lp, 0, 1);
+      if (lp > 0.02){ g.globalAlpha = lp; g.drawImage(SPR[col], mx - 75, my - 75, 150, 150); g.globalAlpha = 1; }
+      g.save(); g.translate(mx, my); g.rotate(Math.atan2(b[1]-a[1], b[0]-a[0]));
+      g.fillStyle = lp > 0.05 ? 'rgba(' + RGB[col] + ',' + (0.25 + 0.75*lp) + ')' : '#0a1220';
+      g.strokeStyle = '#e3ebf4'; g.lineWidth = 4;
+      g.beginPath(); g.moveTo(-22, -24); g.lineTo(-22, 24); g.lineTo(20, 0); g.closePath(); g.fill(); g.stroke();
+      g.lineWidth = 6; g.beginPath(); g.moveTo(22, -26); g.lineTo(22, 26); g.stroke();
+      g.restore();
+    }
+    // lamp
+    const B = clamp(lampB, 0, 1);
+    if (B > 0.02){
+      const R = 60 + 120*B, lg = g.createRadialGradient(760, 1320, 10, 760, 1320, R*1.8);
+      lg.addColorStop(0, 'rgba(255,214,130,' + 0.85*B + ')'); lg.addColorStop(0.4, 'rgba(255,180,80,' + 0.35*B + ')'); lg.addColorStop(1, 'rgba(255,170,60,0)');
+      g.fillStyle = lg; g.beginPath(); g.arc(760, 1320, R*1.8, 0, Math.PI*2); g.fill();
+      g.strokeStyle = 'rgba(255,214,130,' + B + ')'; g.lineWidth = 5;
+      for (let k = 0; k < 12; k++){ const an = k*Math.PI/6 + 0.26, r0 = 72, r1 = 90 + 50*B;
+        g.beginPath(); g.moveTo(760 + r0*Math.cos(an), 1320 + r0*Math.sin(an)); g.lineTo(760 + r1*Math.cos(an), 1320 + r1*Math.sin(an)); g.stroke(); }
+    }
+    g.fillStyle = 'rgba(10,18,32,' + (0.85 - 0.6*B) + ')'; g.beginPath(); g.arc(760, 1320, 56, 0, Math.PI*2); g.fill();
+    g.strokeStyle = '#e3ebf4'; g.lineWidth = 5; g.stroke();
+    g.strokeStyle = B > 0.05 ? 'rgba(255,240,200,' + (0.6 + 0.4*B) + ')' : 'rgba(227,235,244,0.82)'; g.lineWidth = 3;
+    line(P.LOAD.pts.slice(2, 8));
+  }
+  return { cv, step, draw };
+})();
 
 /* ---------------- music: a live soundtrack driven by the circuit ----------------
    Steady 120 BPM groove. Each AC half-cycle plays a note (high square = A is +, low triangle = B is +).
@@ -971,6 +1140,7 @@ function tick(now){
         P.sumAbs += Math.abs(Iv)*h;
       }
       for (const n in diodes){ const d = diodes[n]; d.lp += (Math.min(1, (I[n] || 0)/IREF) - d.lp)*Math.min(1, h/0.03); }
+      Schem.step(h, dir);
       lampB += (Math.pow(vload/(VP - 1.4), 2) - lampB)*Math.min(1, h/0.025);
       record();
     }
@@ -981,8 +1151,8 @@ function tick(now){
   }
   updateVisuals(realDt, simDt);
   Music.frame();
-  controls.update();
-  renderer.render(scene, camera);
+  if (S.view === '2d') Schem.draw(realDt, simDt);
+  else { controls.update(); renderer.render(scene, camera); }
   drawScope();
   uiClock += realDt;
   if (uiDirty || uiClock > 0.12){ uiClock = 0; uiDirty = false; updateUI(); }
