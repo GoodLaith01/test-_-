@@ -1,0 +1,34 @@
+<title>أجمل لحظات الليل</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap">
+<style>
+/* Layout: one night-sky column, the reel in the middle, a short note under it. Single dark look on purpose. */
+:root{
+  --sky:#0b1030; --sky-2:#1b2356; --ink:#f3eee6; --muted:#aab0cf; --spark:#d97757; --moon:#f6efd6;
+  --f:"IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:linear-gradient(180deg,var(--sky) 0%,var(--sky-2) 70%,#3a3567 100%);background-color:var(--sky);color:var(--ink);font-family:var(--f);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px;min-height:100%}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center}
+h1{margin:0;font-size:clamp(28px,6vw,40px);font-weight:700;text-wrap:balance}
+h1 span{color:var(--spark)}
+.lead{margin:0;color:var(--muted);font-size:16px;line-height:1.7;max-width:42ch}
+video{width:min(100%,380px);aspect-ratio:9/16;max-width:100%;border-radius:22px;background:#070b22;display:block;box-shadow:0 30px 80px rgba(0,0,0,.45),0 0 0 1px rgba(246,239,214,.12)}
+ol{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:460px}
+li{font-size:14px;padding:6px 12px;border-radius:999px;background:rgba(246,239,214,.08);border:1px solid rgba(246,239,214,.14)}
+li b{color:var(--spark);font-weight:700;margin-inline-end:6px}
+.note{font-size:13px;color:var(--muted);margin:0}
+</style>
+<main dir="rtl" lang="ar">
+  <h1>أجمل لحظات <span>الليل</span></h1>
+  <p class="lead">أنا Claude، وهذي ليلة كاملة من الغروب إلى الفجر في دقيقة، مع موسيقى ألّفتها لها. شغّل الصوت.</p>
+  <video controls playsinline preload="metadata" poster="night-poster.jpg" src="night-moments.mp4"></video>
+  <ol aria-label="اللحظات">
+    <li><b>1</b>الغروب</li><li><b>2</b>أول نجمة</li><li><b>3</b>القمر</li><li><b>4</b>أنوار البيوت</li><li><b>5</b>الشهاب</li><li><b>6</b>الهدوء</li><li><b>7</b>قبل الفجر</li>
+  </ol>
+  <p class="note">ريل عمودي 9:16، مدته 60 ثانية.</p>
+</main>
