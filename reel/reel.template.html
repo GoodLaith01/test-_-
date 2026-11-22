@@ -1,0 +1,188 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>AC to DC Reel</title>
+<style>
+@font-face{font-family:"Barlow Condensed";font-weight:600;src:url(fonts/barlow-condensed-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:700;src:url(fonts/barlow-condensed-latin-700-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:400;src:url(fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:600;src:url(fonts/jetbrains-mono-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:400;src:url(fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:600;src:url(fonts/ibm-plex-sans-latin-600-normal.woff2) format("woff2")}
+:root{--bg:#070a0e;--fg:#eef3f8;--muted:#8d9bad;--line:#1d2732;--amber:#ffb43b;--cyan:#3fd0ff;--green:#6dff9a;--lav:#c7b6ff}
+*{box-sizing:border-box}
+html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--bg);color:var(--fg);font-family:"IBM Plex Sans",sans-serif}
+#glow{position:absolute;inset:0;background:radial-gradient(1100px 700px at 50% 62%,rgba(255,180,59,.16),transparent 70%);opacity:0}
+.steps{position:absolute;left:70px;right:70px;top:150px;display:flex;gap:12px}
+.steps div{flex:1;height:68px;border-radius:12px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;gap:10px;
+  font-family:"Barlow Condensed";font-weight:600;font-size:30px;letter-spacing:.04em;color:#5d6b7c}
+.steps div b{font-family:"JetBrains Mono";font-size:24px}
+.steps div.on{border-color:var(--amber);color:#14100a;background:var(--amber)}
+.steps div.done{color:var(--amber);border-color:#4a3a1c}
+#head{position:absolute;left:70px;right:70px;top:248px;transform-origin:0 0;z-index:5;border-radius:20px}
+#head.card{background:rgba(7,10,14,.94);border:2px solid var(--line);padding:28px 32px;left:50px;right:50px;box-shadow:0 30px 80px #000}
+#eyebrow{font-family:"JetBrains Mono";font-weight:600;font-size:28px;letter-spacing:.14em;color:var(--amber)}
+#title{font-family:"Barlow Condensed";font-weight:700;font-size:86px;line-height:.98;margin-top:8px;text-wrap:balance}
+#body{font-size:32px;line-height:1.28;color:#c6d0db;margin-top:12px;max-width:940px}
+#view{position:absolute;left:0;top:600px;width:1080px;height:770px}
+#view3d{position:absolute;inset:0}
+#view3d canvas{display:block}
+#fade{position:absolute;left:0;right:0;height:80px;pointer-events:none}
+.meter{position:absolute;left:70px;top:620px;padding:14px 22px;border-radius:14px;background:rgba(7,10,14,.78);border:2px solid var(--line)}
+.meter .k{font-family:"JetBrains Mono";font-size:22px;letter-spacing:.12em;color:var(--muted)}
+.meter .v{font-family:"JetBrains Mono";font-weight:600;font-size:56px;line-height:1.05;font-variant-numeric:tabular-nums;color:var(--amber)}
+.meter .v small{font-size:28px;color:var(--muted);margin-left:6px}
+#meter2{left:auto;right:70px}
+#meter2 .v{color:var(--green)}
+.scopebox{position:absolute;left:60px;right:60px;top:1385px;height:300px;border-radius:18px;overflow:hidden;border:2px solid var(--line);background:#070a0e}
+#scope{display:block;width:100%;height:100%}
+.legend{position:absolute;left:70px;right:70px;top:1705px;display:flex;justify-content:center;gap:34px;font-size:27px;color:#c6d0db}
+.legend span{display:flex;align-items:center;gap:10px}
+.legend i{width:18px;height:18px;border-radius:50%;box-shadow:0 0 14px currentColor;background:currentColor}
+#card{position:absolute;left:70px;right:70px;top:250px;opacity:0}
+.eq{font-family:"JetBrains Mono";font-size:38px;background:#0f151c;border:2px solid var(--line);border-radius:14px;padding:16px 22px;margin-top:16px}
+.eq em{font-style:normal;color:var(--amber)}
+.hidden{display:none}
+</style></head>
+<body>
+<div id="glow"></div>
+<div class="steps" id="steps"><div><b>1</b>AC</div><div><b>2</b>TRANSFORMER</div><div><b>3</b>BRIDGE</div><div><b>4</b>FILTER</div></div>
+<div id="head"><div id="eyebrow"></div><div id="title"></div><div id="body"></div></div>
+<div id="view"><div id="view3d"></div></div>
+<div class="meter"><div class="k">SUPPLY</div><div class="v"><span id="mf">0.50</span><small>Hz</small></div></div>
+<div class="meter" id="meter2"><div class="k">V OUT</div><div class="v"><span id="mv">0.0</span><small>V</small></div></div>
+<div class="scopebox"><canvas id="scope" width="960" height="300"></canvas></div>
+<div class="legend"><span><i style="color:var(--amber)"></i>A is +</span><span><i style="color:var(--cyan)"></i>B is +</span><span><i style="color:var(--green)"></i>from capacitor</span></div>
+<div class="hidden"><span id="cD2"></span><span id="cD3"></span><span id="cD4"></span><input id="cval" type="range"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const reduceMotion = false;
+/*__LAB_CORE__*/
+let uiDirty = false;
+S.auto = false; S.cap = false; S.mode = 'full'; S.f = 0.5; S.playing = true;
+sc._d = 1.55;
+renderer.setPixelRatio(1);
+renderer.setSize(1080, 770);
+camera.aspect = 1080/770; camera.updateProjectionMatrix();
+renderer.domElement.style.width = '1080px'; renderer.domElement.style.height = '770px';
+
+/* ---------- script ---------- */
+const FPS = 30, DUR = 50;
+const fAt = t => t < 30 ? 0.5 : t < 38 ? 0.5*Math.pow(100, (t-30)/8) : 50;
+const V3 = (x,y,z) => new THREE.Vector3(x,y,z);
+const SHOT = {
+  wide0:{ p:V3(0.5,17,24),   t:V3(0.5,0.5,0.5), drift:0.05 },
+  src:  { p:V3(-6,6.5,10.5), t:V3(-7.5,1.2,0),  drift:0.03 },
+  xfmr: { p:V3(-3.2,4.8,8.4),t:V3(-4.5,1.8,0),  drift:-0.035 },
+  bridge:{p:V3(2.5,9.2,6.2), t:V3(2.5,0.2,0.3), drift:0.0 },
+  out:  { p:V3(6.5,8,10),    t:V3(7.5,0.6,0.3), drift:0.02 },
+  cap:  { p:V3(7.4,5.4,8.6), t:V3(8.6,0.8,0.5), drift:0.02 },
+  sweep:{ p:V3(3,13,17),     t:V3(3,0.5,0.5),   drift:0.03 },
+  wide1:{ p:V3(1.5,15,20.5), t:V3(1.5,0.5,0.5), drift:0.045 }
+};
+const SCENES = [
+  { t0:0,  step:0, shot:'wide0',  eb:'ELECTRONICS IN 50 SECONDS', title:'How does AC become DC?', body:'Follow the current through a bridge rectifier.' },
+  { t0:4,  step:1, shot:'src',    eb:'STEP 1 · AC SUPPLY', title:'AC keeps switching direction', body:'Real mains flips 50× a second. Slowed here to 0.5 Hz.' },
+  { t0:10, step:2, shot:'xfmr',   eb:'STEP 2 · TRANSFORMER', title:'230 V in, 12 V out', body:'Changing flux in the iron core induces a smaller voltage.<br>Vpeak = √2 × 12 V ≈ 17 V' },
+  { t0:14, step:3, shot:'bridge', eb:'STEP 3 · BRIDGE RECTIFIER', title:'', body:'The other two diodes block. Watch the colours swap.' },
+  { t0:22, step:3, shot:'out',    eb:'STEP 3 · RESULT', title:'One direction through the lamp', body:'But it drops to zero twice per cycle: pulsating DC.' },
+  { t0:28, step:4, shot:'cap',    eb:'STEP 4 · SMOOTHING CAPACITOR', title:'Add a capacitor', body:'It stores charge at every peak and feeds the lamp in between.' },
+  { t0:30, step:4, shot:'sweep',  eb:'STEP 4 · SPEED UP TO REAL MAINS', title:'', body:'Faster peaks refill the capacitor before it can empty.' },
+  { t0:38, step:4, shot:'wide1',  eb:'RESULT', title:'Smooth DC!', body:'' },
+  { t0:46, step:5, shot:'wide1',  eb:'', title:'', body:'' }
+];
+const sceneAt = t => { let i = 0; while (i+1 < SCENES.length && SCENES[i+1].t0 <= t) i++; return i; };
+const ease = x => x<0?0:x>1?1:x*x*(3-2*x);
+function shotPose(name, el){
+  const s = SHOT[name], off = s.p.clone().sub(s.t);
+  off.applyAxisAngle(V3(0,1,0), s.drift*el);
+  return { p:s.t.clone().add(off), t:s.t.clone() };
+}
+function cameraAt(t){
+  const i = sceneAt(t), sc0 = SCENES[i];
+  let pose = shotPose(sc0.shot, t - sc0.t0);
+  if (i > 0 && SCENES[i-1].shot !== sc0.shot){
+    const prev = SCENES[i-1], k = ease((t - sc0.t0)/1.0);
+    if (k < 1){ const a = shotPose(prev.shot, sc0.t0 - prev.t0); pose.p.lerpVectors(a.p, pose.p, k); pose.t.lerpVectors(a.t, pose.t, k); }
+  }
+  camera.position.copy(pose.p); camera.lookAt(pose.t);
+}
+
+/* ---------- header text with pop animation ---------- */
+let lastKey = '', popT = -10;
+function setHead(t, eb, title, body, color){
+  const key = eb + '|' + title;
+  if (key !== lastKey){ lastKey = key; popT = t; $('#eyebrow').textContent = eb; $('#title').innerHTML = title; $('#body').innerHTML = body; }
+  else if ($('#body').innerHTML !== body) $('#body').innerHTML = body;
+  $('#title').style.color = color || '';
+  const k = ease((t - popT)/0.3);
+  $('#head').style.opacity = k; $('#head').style.transform = 'translateY(' + ((1-k)*30) + 'px) scale(' + (0.94 + 0.06*k) + ')';
+}
+
+let capLanded = false;
+const dir = 1;
+function stepSim(h){
+  S.f = fAt(simT);
+  physics(h); branchCurrents();
+  for (const P of paths){ const Iv = I[P.name] || 0; P.offset += clamp(Iv/IREF,-4,4)*1.4*dir*h; P.sumAbs += Math.abs(Iv)*h; }
+  for (const n in diodes){ const d = diodes[n]; d.lp += (Math.min(1,(I[n]||0)/IREF) - d.lp)*Math.min(1, h/0.03); }
+  lampB += (Math.pow(vload/(VP-1.4),2) - lampB)*Math.min(1, h/0.025);
+  record();
+}
+
+window.renderAt = function(t){
+  const t0 = simT, simDt = t - simT;
+  if (simDt > 0){ const steps = Math.max(1, Math.ceil(simDt/5e-5)), h = simDt/steps; for (let k = 0; k < steps; k++) stepSim(h); }
+  // capacitor drops in at 28 s, lands and connects at 28.6 s
+  if (t >= 28.6 && !S.cap){ S.cap = true; Vc = vload; applyTopology(); }
+  capGroup.visible = t >= 28;
+  pathBy.CAP.mesh.visible = t >= 28.6;
+  if (t >= 28 && t < 29.2){
+    const u = (t - 28)/0.6;
+    capGroup.position.y = u < 1 ? 5*(1-u*u) : 0.25*Math.abs(Math.sin((t-28.6)*14))*Math.exp(-(t-28.6)*6);
+  } else capGroup.position.y = 0;
+  updateVisuals(1/FPS, Math.max(simDt, 1e-6));
+  cameraAt(t);
+  renderer.render(scene, camera);
+  drawScope();
+
+  // beat glow (120 BPM) during sections with drums
+  const beatPh = ((t % 0.5) + 0.5) % 0.5;
+  const drums = (t >= 4 && t < 28) || (t >= 30 && t < 46);
+  $('#glow').style.opacity = drums ? (0.25 + 0.75*Math.exp(-beatPh*9)).toFixed(3) : 0.2;
+  const i = sceneAt(t), s = SCENES[i];
+  const pos = vs >= 0;
+  document.querySelectorAll('#steps div').forEach((d, k) => { d.className = (k+1 === s.step) ? 'on' : (k+1 < s.step ? 'done' : ''); });
+  $('#mf').textContent = S.f < 10 ? S.f.toFixed(2) : S.f.toFixed(1);
+  $('#mv').textContent = vload.toFixed(1);
+  const fr = 2*S.f;
+  if (i === 1){
+    setHead(t, s.eb, s.title, s.body + '<br><span style="color:' + (pos ? 'var(--amber)' : 'var(--cyan)') + ';font-weight:600">' + (pos ? '→ Now terminal A is +' : '← Now terminal B is +') + '</span>');
+  } else if (i === 3){
+    const title = ib > 1e-4 ? (pos ? 'A is + → D1 and D3 open' : 'B is + → D2 and D4 open') : 'Zero crossing: all diodes off';
+    setHead(t, s.eb, title, s.body, ib > 1e-4 ? (pos ? 'var(--amber)' : 'var(--cyan)') : '#8d9bad');
+  } else if (i === 6){
+    setHead(t, s.eb, 'f = <span style="font-family:JetBrains Mono;font-variant-numeric:tabular-nums">' + (S.f < 10 ? S.f.toFixed(2) : S.f.toFixed(1)) + '</span> Hz', s.body, 'var(--amber)');
+    lastKey = s.eb + '|sweep';
+  } else if (i === 7){
+    const rip = stats.n ? (stats.max - stats.min) : 0;
+    setHead(t, s.eb, s.title, 'V out ≈ ' + stats.avg.toFixed(1) + ' V, ripple only ' + rip.toFixed(1) + ' V.<br>The diodes refill C ' + Math.round(fr) + ' times per second.', 'var(--green)');
+  } else if (i === 8){
+    setHead(t, 'SAVE THIS FOR YOUR EXAM', 'The 3 formulas', '<div class="eq"><em>Vpk</em> = √2 × Vrms</div><div class="eq"><em>Vdc</em> ≈ Vpk − 2 × 0.7 V</div><div class="eq"><em>Vripple</em> ≈ I / (2 f C)</div>');
+  } else setHead(t, s.eb, s.title, s.body);
+  $('#head').classList.toggle('card', i === 8);
+  return true;
+};
+
+window.ready = (async () => {
+  await Promise.all([document.fonts.load('600 40px "Barlow Condensed"'), document.fonts.load('700 40px "Barlow Condensed"'), document.fonts.load('400 20px "JetBrains Mono"'), document.fonts.load('600 20px "JetBrains Mono"'), document.fonts.load('400 20px "IBM Plex Sans"'), document.fonts.load('600 20px "IBM Plex Sans"')]);
+  drawBoard(); addLabels(); applyTopology();
+  capGroup.visible = false;
+  window.renderAt(0);
+  return true;
+})();
+})();
+</script>
+</body></html>

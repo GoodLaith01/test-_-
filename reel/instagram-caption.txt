@@ -1,0 +1,15 @@
+How does AC become DC? ⚡ Watch the current, step by step.
+
+1️⃣ AC supply: the current changes direction 50 times a second (slowed down here so you can follow it)
+2️⃣ Transformer: 230 V down to 12 V (peak ≈ 17 V)
+3️⃣ Bridge rectifier: when A is +, D1 and D3 conduct. When B is +, D2 and D4 conduct. Either way, current goes through the load in the same direction.
+4️⃣ Capacitor: charges at every peak and feeds the load in between, so the output becomes smooth DC
+
+Listen to the music too. The bass switches back and forth like AC, then holds one steady note when the output becomes DC.
+
+📌 Save this for your exam:
+Vpk = √2 × Vrms
+Vdc ≈ Vpk − 1.4 V
+Vripple ≈ I / (2 f C)
+
+#electricalengineering #electronics #rectifier #powerelectronics #engineeringstudents #acdc #diodes #circuitanalysis #learnelectronics #engineering

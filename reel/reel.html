@@ -1,0 +1,682 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>AC to DC Reel</title>
+<style>
+@font-face{font-family:"Barlow Condensed";font-weight:600;src:url(fonts/barlow-condensed-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:700;src:url(fonts/barlow-condensed-latin-700-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:400;src:url(fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:600;src:url(fonts/jetbrains-mono-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:400;src:url(fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:600;src:url(fonts/ibm-plex-sans-latin-600-normal.woff2) format("woff2")}
+:root{--bg:#070a0e;--fg:#eef3f8;--muted:#8d9bad;--line:#1d2732;--amber:#ffb43b;--cyan:#3fd0ff;--green:#6dff9a;--lav:#c7b6ff}
+*{box-sizing:border-box}
+html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--bg);color:var(--fg);font-family:"IBM Plex Sans",sans-serif}
+#glow{position:absolute;inset:0;background:radial-gradient(1100px 700px at 50% 62%,rgba(255,180,59,.16),transparent 70%);opacity:0}
+.steps{position:absolute;left:70px;right:70px;top:150px;display:flex;gap:12px}
+.steps div{flex:1;height:68px;border-radius:12px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;gap:10px;
+  font-family:"Barlow Condensed";font-weight:600;font-size:30px;letter-spacing:.04em;color:#5d6b7c}
+.steps div b{font-family:"JetBrains Mono";font-size:24px}
+.steps div.on{border-color:var(--amber);color:#14100a;background:var(--amber)}
+.steps div.done{color:var(--amber);border-color:#4a3a1c}
+#head{position:absolute;left:70px;right:70px;top:248px;transform-origin:0 0;z-index:5;border-radius:20px}
+#head.card{background:rgba(7,10,14,.94);border:2px solid var(--line);padding:28px 32px;left:50px;right:50px;box-shadow:0 30px 80px #000}
+#eyebrow{font-family:"JetBrains Mono";font-weight:600;font-size:28px;letter-spacing:.14em;color:var(--amber)}
+#title{font-family:"Barlow Condensed";font-weight:700;font-size:86px;line-height:.98;margin-top:8px;text-wrap:balance}
+#body{font-size:32px;line-height:1.28;color:#c6d0db;margin-top:12px;max-width:940px}
+#view{position:absolute;left:0;top:600px;width:1080px;height:770px}
+#view3d{position:absolute;inset:0}
+#view3d canvas{display:block}
+#fade{position:absolute;left:0;right:0;height:80px;pointer-events:none}
+.meter{position:absolute;left:70px;top:620px;padding:14px 22px;border-radius:14px;background:rgba(7,10,14,.78);border:2px solid var(--line)}
+.meter .k{font-family:"JetBrains Mono";font-size:22px;letter-spacing:.12em;color:var(--muted)}
+.meter .v{font-family:"JetBrains Mono";font-weight:600;font-size:56px;line-height:1.05;font-variant-numeric:tabular-nums;color:var(--amber)}
+.meter .v small{font-size:28px;color:var(--muted);margin-left:6px}
+#meter2{left:auto;right:70px}
+#meter2 .v{color:var(--green)}
+.scopebox{position:absolute;left:60px;right:60px;top:1385px;height:300px;border-radius:18px;overflow:hidden;border:2px solid var(--line);background:#070a0e}
+#scope{display:block;width:100%;height:100%}
+.legend{position:absolute;left:70px;right:70px;top:1705px;display:flex;justify-content:center;gap:34px;font-size:27px;color:#c6d0db}
+.legend span{display:flex;align-items:center;gap:10px}
+.legend i{width:18px;height:18px;border-radius:50%;box-shadow:0 0 14px currentColor;background:currentColor}
+#card{position:absolute;left:70px;right:70px;top:250px;opacity:0}
+.eq{font-family:"JetBrains Mono";font-size:38px;background:#0f151c;border:2px solid var(--line);border-radius:14px;padding:16px 22px;margin-top:16px}
+.eq em{font-style:normal;color:var(--amber)}
+.hidden{display:none}
+</style></head>
+<body>
+<div id="glow"></div>
+<div class="steps" id="steps"><div><b>1</b>AC</div><div><b>2</b>TRANSFORMER</div><div><b>3</b>BRIDGE</div><div><b>4</b>FILTER</div></div>
+<div id="head"><div id="eyebrow"></div><div id="title"></div><div id="body"></div></div>
+<div id="view"><div id="view3d"></div></div>
+<div class="meter"><div class="k">SUPPLY</div><div class="v"><span id="mf">0.50</span><small>Hz</small></div></div>
+<div class="meter" id="meter2"><div class="k">V OUT</div><div class="v"><span id="mv">0.0</span><small>V</small></div></div>
+<div class="scopebox"><canvas id="scope" width="960" height="300"></canvas></div>
+<div class="legend"><span><i style="color:var(--amber)"></i>A is +</span><span><i style="color:var(--cyan)"></i>B is +</span><span><i style="color:var(--green)"></i>from capacitor</span></div>
+<div class="hidden"><span id="cD2"></span><span id="cD3"></span><span id="cD4"></span><input id="cval" type="range"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const reduceMotion = false;
+/* ---------------- circuit model ---------------- */
+const VP = 17.0, VD = 0.7, RS = 1.5, IREF = 0.16, F_MIN = 0.2, F_SLIDER_MAX = 60;
+const C_OPTS = [100,220,470,1000,2200,4700], R_OPTS = [22,47,100,220,470,1000];
+const S = { playing: !reduceMotion, auto:true, f:F_MIN, fEnd:50, rampT:0, rampDur:100,
+            mode:'full', cap:true, C:1000e-6, R:100, ts:1, electron:false };
+let phi = 0, simT = 0, Vc = 0, ib = 0, iL = 0, vs = 0, vrect = 0, vload = 0;
+const I = {};
+const smooth = (a,b,x) => { const t = Math.min(1, Math.max(0, (x-a)/(b-a))); return t*t*(3-2*t); };
+const clamp = (x,a,b) => Math.min(b, Math.max(a, x));
+
+function physics(h){
+  if (S.auto){
+    S.rampT += h;
+    const u = Math.min(1, S.rampT / S.rampDur);
+    S.f = F_MIN * Math.pow(S.fEnd / F_MIN, u);
+    if (u >= 1){ S.auto = false; uiDirty = true; }
+  }
+  phi += 2*Math.PI*S.f*h;
+  if (phi > 2*Math.PI) phi -= 2*Math.PI;
+  vs = VP*Math.sin(phi);
+  vrect = S.mode === 'full' ? Math.abs(vs) - 2*VD : vs - VD;
+  if (S.cap){
+    ib = vrect > Vc ? (vrect - Vc)/RS : 0;
+    Vc += (ib - Vc/S.R)/S.C*h;
+    if (Vc < 0) Vc = 0;
+    vload = Vc; iL = Vc/S.R;
+  } else {
+    ib = vrect > 0 ? vrect/(S.R + RS) : 0;
+    vload = ib*S.R; iL = ib; Vc = vload;
+  }
+  simT += h;
+}
+function branchCurrents(){
+  const pos = vs >= 0, full = S.mode === 'full';
+  const sec = full ? (pos ? ib : -ib) : ib;
+  I.SEC = sec;
+  I.PRI = sec + 0.035*(-Math.cos(phi));   // load current reflected + magnetising current (lags by 90°)
+  I.PRI_INT = I.PRI;
+  I.D1 = full ? (pos ? ib : 0) : ib;
+  I.D3 = I.D1;
+  I.D2 = full ? (pos ? 0 : ib) : 0;
+  I.D4 = I.D2;
+  I.RP1 = ib; I.RN1 = ib;
+  I.RP2 = iL; I.LOAD = iL; I.RN2 = iL;
+  I.CAP = S.cap ? ib - iL : 0;
+}
+
+/* ---------------- scope buffer ---------------- */
+const BUF = 4096;
+const bT = new Float64Array(BUF), bVs = new Float32Array(BUF), bRect = new Float32Array(BUF), bOut = new Float32Array(BUF);
+let bIdx = 0, bCount = 0, lastRec = -1;
+const CYCLES = 3;
+function record(){
+  const W = CYCLES / S.f;
+  if (simT - lastRec < W/1500) return;
+  lastRec = simT;
+  bT[bIdx] = simT; bVs[bIdx] = vs; bRect[bIdx] = Math.max(0, vrect)*S.R/(S.R+RS); bOut[bIdx] = vload;
+  bIdx = (bIdx + 1) % BUF; if (bCount < BUF) bCount++;
+}
+
+/* ---------------- three.js scene ---------------- */
+const host = $('#view3d');
+const renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+host.insertBefore(renderer.domElement, host.firstChild);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0a0e13');
+scene.fog = new THREE.Fog('#0a0e13', 45, 90);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.maxPolarAngle = 1.45; controls.minDistance = 5; controls.maxDistance = 60;
+const TARGET = new THREE.Vector3(0.2, 0.3, 0.7);
+
+function frameCamera(){
+  const a = camera.aspect;
+  const d = clamp(13.6/(Math.tan(19*Math.PI/180)*a), 17, 44);
+  const dir = new THREE.Vector3(0.02, 0.70, 0.71).normalize();
+  camera.position.copy(TARGET).addScaledVector(dir, d);
+  controls.target.copy(TARGET); controls.update();
+}
+
+scene.add(new THREE.HemisphereLight('#cfd8ff', '#1b1510', 0.55));
+const sun = new THREE.DirectionalLight('#ffffff', 0.85);
+sun.position.set(6, 16, 9); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left:-15, right:15, top:9, bottom:-9, near:1, far:40 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+const fill = new THREE.DirectionalLight('#9fb4ff', 0.25); fill.position.set(-10, 6, -8); scene.add(fill);
+
+const COL = { amber:new THREE.Color('#ffb43b'), cyan:new THREE.Color('#3fd0ff'), green:new THREE.Color('#6dff9a'), lav:new THREE.Color('#c7b6ff') };
+const M = {
+  copper: new THREE.MeshStandardMaterial({ color:'#c27b3f', metalness:0.75, roughness:0.32, depthWrite:false }),
+  enamel: new THREE.MeshStandardMaterial({ color:'#c9873c', metalness:0.6, roughness:0.38, depthWrite:false }),
+  metal:  new THREE.MeshStandardMaterial({ color:'#2a313b', metalness:0.55, roughness:0.45 }),
+  core:   new THREE.MeshStandardMaterial({ color:'#4b5361', metalness:0.6, roughness:0.5, emissive:'#000000' }),
+  pad:    new THREE.MeshStandardMaterial({ color:'#c9ced6', metalness:0.9, roughness:0.25 }),
+  diode:  new THREE.MeshStandardMaterial({ color:'#16181d', metalness:0.2, roughness:0.45 }),
+  band:   new THREE.MeshStandardMaterial({ color:'#d6dbe2', metalness:0.8, roughness:0.3 }),
+  brass:  new THREE.MeshStandardMaterial({ color:'#a8894b', metalness:0.85, roughness:0.3 }),
+  capBody:new THREE.MeshStandardMaterial({ color:'#21468f', metalness:0.25, roughness:0.4 }),
+  capTop: new THREE.MeshStandardMaterial({ color:'#b9c0ca', metalness:0.85, roughness:0.3 }),
+  red:    new THREE.MeshStandardMaterial({ color:'#c8302e', metalness:0.3, roughness:0.4 }),
+  black:  new THREE.MeshStandardMaterial({ color:'#111317', metalness:0.3, roughness:0.4 })
+};
+
+/* board */
+const boardCanvas = document.createElement('canvas');
+boardCanvas.width = 2600; boardCanvas.height = 1000;
+const boardTex = new THREE.CanvasTexture(boardCanvas);
+boardTex.encoding = THREE.sRGBEncoding; boardTex.anisotropy = 8;
+const board = new THREE.Mesh(new THREE.PlaneGeometry(26, 10), new THREE.MeshStandardMaterial({ map:boardTex, roughness:0.85, metalness:0.05 }));
+board.rotation.x = -Math.PI/2; board.receiveShadow = true; board.renderOrder = -1;
+scene.add(board);
+const base = new THREE.Mesh(new THREE.BoxGeometry(26.3, 0.35, 10.3), new THREE.MeshStandardMaterial({ color:'#0d1319', roughness:0.9 }));
+base.position.y = -0.18; scene.add(base);
+
+/* ---------- circuit paths ---------- */
+const Y = 0.15;
+function helix(cx, cz, r, y0, y1, turns, a0){
+  const pts = [], N = Math.round(turns*30);
+  for (let i = 0; i <= N; i++){ const u = i/N, a = a0 + u*turns*2*Math.PI; pts.push([cx + r*Math.cos(a), y0 + (y1-y0)*u, cz + r*Math.sin(a)]); }
+  return pts;
+}
+const SPACING = 0.34;
+const paths = [];
+const pathBy = {};
+function addPath(name, pts, opts){
+  opts = opts || {};
+  const P = { name, pts: pts.map(p => new THREE.Vector3(p[0], p[1], p[2])), cum:[0], offset:0, bright:0, active:true, sumAbs:0, col:new THREE.Color(), mesh:null };
+  for (let i = 1; i < P.pts.length; i++) P.cum.push(P.cum[i-1] + P.pts[i].distanceTo(P.pts[i-1]));
+  P.len = P.cum[P.cum.length-1];
+  P.n = Math.max(2, Math.round(P.len / SPACING));
+  P.sp = P.len / P.n;
+  if (opts.wire !== false){
+    const cp = new THREE.CurvePath();
+    for (let i = 1; i < P.pts.length; i++) cp.add(new THREE.LineCurve3(P.pts[i-1], P.pts[i]));
+    const geo = new THREE.TubeGeometry(cp, Math.ceil(P.len/0.035), opts.r || 0.05, 8, false);
+    P.mesh = new THREE.Mesh(geo, opts.mat || M.copper);
+    P.mesh.renderOrder = 1; P.mesh.castShadow = true;
+    scene.add(P.mesh);
+  }
+  paths.push(P); pathBy[name] = P;
+  return P;
+}
+function pointAt(P, s, out){
+  const c = P.cum; let lo = 0, hi = c.length - 1;
+  while (hi - lo > 1){ const m = (lo + hi) >> 1; if (c[m] <= s) lo = m; else hi = m; }
+  const seg = c[hi] - c[lo] || 1;
+  return out.copy(P.pts[lo]).lerp(P.pts[hi], (s - c[lo]) / seg);
+}
+
+// AC source loop (primary)
+const priHelix = helix(-6, 0, 0.45, 2.9, 0.7, 9, Math.PI);
+addPath('PRI', [[-9.0,Y,-1.2],[-7.4,Y,-1.2],[-7.4,2.9,-1.2]].concat(priHelix, [[-7.4,0.7,1.2],[-7.4,Y,1.2],[-9.0,Y,1.2]]), { mat:M.enamel, r:0.045 });
+addPath('PRI_INT', [[-9.0,Y,1.2],[-10.4,Y,1.2],[-10.4,Y,-1.2],[-9.0,Y,-1.2]], { wire:false });
+// secondary: from N2 via B, up the coil, out through A to N1 (positive = A drives current out into N1)
+const secHelix = helix(-3, 0, 0.45, 0.7, 2.9, 5, 0);
+addPath('SEC', [[2.5,Y,2],[-1.6,Y,2],[-1.6,0.7,1.0]].concat(secHelix, [[-1.6,2.9,-1.0],[-1.6,Y,-2],[2.5,Y,-2]]), { mat:M.enamel, r:0.045 });
+// bridge: N1 (2.5,-2) top, N2 (2.5,2) bottom, PLUS (4.5,0) right, MINUS (0.5,0) left; each path runs anode → cathode
+const N1 = [2.5,Y,-2], N2 = [2.5,Y,2], PLUS = [4.5,Y,0], MINUS = [0.5,Y,0];
+addPath('D1', [N1, PLUS]);
+addPath('D2', [N2, PLUS]);
+addPath('D3', [MINUS, N2]);
+addPath('D4', [MINUS, N1]);
+// DC side
+addPath('RP1', [PLUS,[6,Y,0],[6,Y,-2.5],[8,Y,-2.5]]);
+addPath('RP2', [[8,Y,-2.5],[11,Y,-2.5],[11,Y,-1]]);
+addPath('LOAD', [[11,Y,-1],[11,Y,-0.25],[11,0.95,-0.12],[11,1.32,-0.12],[11,1.32,0.12],[11,0.95,0.12],[11,Y,0.25],[11,Y,1]], { r:0.035 });
+addPath('RN2', [[11,Y,1],[11,Y,3.5],[8,Y,3.5]]);
+addPath('RN1', [[8,Y,3.5],[0.5,Y,3.5],[0.5,Y,2.7],[0.5,0.85,2.35],[0.5,0.85,1.65],[0.5,Y,1.3],MINUS]);
+addPath('CAP', [[8,Y,-2.5],[8,Y,0.2],[8,Y,0.9],[8,Y,3.5]]);
+
+/* pads at circuit nodes */
+const padGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.04, 24);
+[N1, N2, PLUS, MINUS, [8,Y,-2.5], [8,Y,3.5], [11,Y,-1], [11,Y,1], [-1.6,Y,2], [-1.6,Y,-2], [-7.4,Y,-1.2], [-7.4,Y,1.2]].forEach(p => {
+  const m = new THREE.Mesh(padGeo, M.pad); m.position.set(p[0], 0.02, p[2]); m.receiveShadow = true; scene.add(m);
+});
+
+/* AC source */
+const src = new THREE.Group(); scene.add(src);
+{
+  const box = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 3.2), M.metal);
+  box.position.set(-10.4, 0.6, 0); box.castShadow = true; box.receiveShadow = true; src.add(box);
+  const bezel = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.06, 48), M.pad); bezel.position.set(-10.4, 1.22, 0); src.add(bezel);
+  const face = new THREE.Mesh(new THREE.CylinderGeometry(0.86, 0.86, 0.08, 48), new THREE.MeshStandardMaterial({ color:'#0c1117', roughness:0.6 }));
+  face.position.set(-10.4, 1.24, 0); src.add(face);
+  [-1.2, 1.2].forEach((z, i) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.4, 20), i ? M.black : M.red);
+    post.rotation.z = Math.PI/2; post.position.set(-9.15, 0.22, z); post.castShadow = true; src.add(post);
+  });
+}
+const phasor = new THREE.Group(); phasor.position.set(-10.4, 1.3, 0); scene.add(phasor);
+const arrowMat = new THREE.MeshBasicMaterial({ color:'#ffe0a3', transparent:true });
+const arrow = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.03, 0.07), arrowMat); arrow.position.x = 0.36; phasor.add(arrow);
+const arrowTip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.2, 16), arrowMat); arrowTip.rotation.z = -Math.PI/2; arrowTip.position.x = 0.78; phasor.add(arrowTip);
+const blurMat = new THREE.MeshBasicMaterial({ color:'#c7b6ff', transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide });
+const blurDisc = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.84, 48), blurMat); blurDisc.rotation.x = -Math.PI/2; blurDisc.position.set(-10.4, 1.29, 0); scene.add(blurDisc);
+
+/* transformer core */
+const coreGroup = new THREE.Group(); scene.add(coreGroup);
+[[-6,1.85,0,0.5,3.4,0.5],[-3,1.85,0,0.5,3.4,0.5],[-4.5,3.3,0,3.5,0.5,0.5],[-4.5,0.4,0,3.5,0.5,0.5]].forEach(b => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(b[3], b[4], b[5]), M.core);
+  m.position.set(b[0], b[1], b[2]); m.castShadow = true; m.receiveShadow = true; coreGroup.add(m);
+});
+// lamination lines
+{
+  const lamMat = new THREE.MeshBasicMaterial({ color:'#2b313a' });
+  for (let i = -2; i <= 2; i++){
+    const l = new THREE.Mesh(new THREE.BoxGeometry(3.52, 0.52, 0.012), lamMat);
+    l.position.set(-4.5, 3.3, i*0.1); coreGroup.add(l);
+    const l2 = l.clone(); l2.position.y = 0.4; coreGroup.add(l2);
+  }
+}
+
+/* diodes */
+const diodes = {};
+['D1','D2','D3','D4'].forEach(name => {
+  const P = pathBy[name];
+  const a = P.pts[0], b = P.pts[P.pts.length-1];
+  const dir = new THREE.Vector3().subVectors(b, a).normalize();
+  const g = new THREE.Group();
+  g.position.copy(a).lerp(b, 0.5);
+  g.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.8, 24), M.diode); body.castShadow = true; g.add(body);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.175, 0.12, 24), M.band); band.position.y = 0.27; g.add(band);
+  const glowMat = new THREE.MeshBasicMaterial({ color: (name === 'D1' || name === 'D3') ? COL.amber : COL.cyan, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false });
+  const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.95, 24), glowMat); g.add(glow);
+  scene.add(g);
+  diodes[name] = { g, glowMat, lp:0 };
+});
+
+/* filter capacitor */
+const capGroup = new THREE.Group(); capGroup.position.set(8, 0, 0.55); scene.add(capGroup);
+{
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.4, 40), M.capBody); body.position.y = 0.72; body.castShadow = true; capGroup.add(body);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.47, 0.05, 40), M.capTop); top.position.y = 1.43; capGroup.add(top);
+  const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.505, 0.505, 1.36, 40, 1, true, Math.PI*0.3, Math.PI*0.4), new THREE.MeshStandardMaterial({ color:'#c9d3e6', roughness:0.5, side:THREE.DoubleSide }));
+  stripe.position.y = 0.72; capGroup.add(stripe);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.4, 20, 1, true), new THREE.MeshStandardMaterial({ color:'#3a4656', transparent:true, opacity:0.35, side:THREE.DoubleSide }));
+  tube.position.set(0.85, 0.72, 0); capGroup.add(tube);
+}
+const chargeMat = new THREE.MeshBasicMaterial({ color:COL.green });
+const chargeBar = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1, 16), chargeMat);
+chargeBar.position.set(0.85, 0.02, 0); capGroup.add(chargeBar);
+
+/* lamp */
+const lampGroup = new THREE.Group(); lampGroup.position.set(11, 0, 0); scene.add(lampGroup);
+const bulbMat = new THREE.MeshStandardMaterial({ color:'#fff3d6', transparent:true, opacity:0.22, roughness:0.1, emissive:'#ffcc77', emissiveIntensity:0, depthWrite:false });
+{
+  const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.6, 28), M.brass); sock.position.y = 0.3; sock.castShadow = true; lampGroup.add(sock);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.52, 32, 24), bulbMat); bulb.position.y = 1.18; bulb.renderOrder = 2; lampGroup.add(bulb);
+}
+const lampLight = new THREE.PointLight('#ffcf7a', 0, 9, 2); lampLight.position.set(11, 1.25, 0); scene.add(lampLight);
+
+/* particles */
+function radialTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'); const gr = g.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.25,'rgba(255,255,255,0.85)'); gr.addColorStop(0.6,'rgba(255,255,255,0.18)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0,0,64,64);
+  const t = new THREE.CanvasTexture(c); return t;
+}
+const dotTex = radialTexture();
+let total = 0; paths.forEach(P => { P.start = total; total += P.n; });
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(total*3), pCol = new Float32Array(total*3);
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+const pMat = new THREE.PointsMaterial({ size:0.36, map:dotTex, vertexColors:true, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
+const points = new THREE.Points(pGeo, pMat); points.frustumCulled = false; points.renderOrder = 3; scene.add(points);
+
+const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map:dotTex, color:'#ffc766', transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0 }));
+halo.position.set(11, 1.22, 0); halo.renderOrder = 4; scene.add(halo);
+
+/* labels and silkscreen (drawn once fonts are ready) */
+function makeLabel(text, color, h){
+  const c = document.createElement('canvas'), font = '700 78px "Barlow Condensed","Arial Narrow",sans-serif';
+  let g = c.getContext('2d'); g.font = font;
+  const tw = Math.ceil(g.measureText(text).width) + 40; c.width = Math.max(128, tw); c.height = 128;
+  g = c.getContext('2d'); g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 10; g.strokeStyle = 'rgba(5,8,12,0.85)'; g.strokeText(text, c.width/2, 66);
+  g.fillStyle = color; g.fillText(text, c.width/2, 66);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:t, transparent:true, depthWrite:false }));
+  s.scale.set(h*c.width/128, h, 1); s.renderOrder = 5; return s;
+}
+function drawBoard(){
+  const g = boardCanvas.getContext('2d'), W = 2600, H = 1000;
+  const X = x => (x + 13)*100, Z = z => (z + 5)*100;
+  g.fillStyle = '#111921'; g.fillRect(0,0,W,H);
+  for (let i = 0; i <= W; i += 50){ g.strokeStyle = i % 100 ? '#141d26' : '#18222d'; g.lineWidth = 2; g.beginPath(); g.moveTo(i,0); g.lineTo(i,H); g.stroke(); }
+  for (let j = 0; j <= H; j += 50){ g.strokeStyle = j % 100 ? '#141d26' : '#18222d'; g.lineWidth = 2; g.beginPath(); g.moveTo(0,j); g.lineTo(W,j); g.stroke(); }
+  const regions = [
+    { x0:-12.7, x1:-8.5, t:'AC SUPPLY', s:'230 V~ mains · 0.2–60 Hz' },
+    { x0:-8.2, x1:-0.9, t:'STEP-DOWN TRANSFORMER', s:'230 V → 12 V rms · Vpk ≈ 17 V' },
+    { x0:-0.5, x1:5.4, t:'BRIDGE RECTIFIER', s:'4 × 1N4007 · 2 × 0.7 V drop' },
+    { x0:5.7, x1:9.5, t:'FILTER', s:'electrolytic C, 25 V' },
+    { x0:9.8, x1:12.7, t:'LOAD', s:'lamp, R_L' }
+  ];
+  regions.forEach(r => {
+    g.setLineDash([18,12]); g.strokeStyle = '#3a4a5c'; g.lineWidth = 3;
+    g.strokeRect(X(r.x0), Z(-4.75), X(r.x1)-X(r.x0), Z(4.7)-Z(-4.75));
+    g.setLineDash([]);
+    g.fillStyle = '#e2e9f1'; g.font = '600 44px "Barlow Condensed","Arial Narrow",sans-serif'; g.textBaseline = 'alphabetic';
+    g.fillText(r.t, X(r.x0) + 22, Z(4.12));
+    g.fillStyle = '#8796a8'; g.font = '400 23px "JetBrains Mono",monospace';
+    g.fillText(r.s, X(r.x0) + 22, Z(4.48));
+  });
+  g.fillStyle = '#e2e9f1'; g.font = '600 46px "Barlow Condensed","Arial Narrow",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('A', X(-1.15), Z(-2.45)); g.fillText('B', X(-1.15), Z(2.45));
+  g.fillStyle = '#ffb43b'; g.fillText('+ DC', X(6.75), Z(-2.95));
+  g.fillStyle = '#9fb0c4'; g.fillText('− DC', X(6.75), Z(3.05));
+  g.fillStyle = '#8796a8'; g.font = '400 22px "JetBrains Mono",monospace';
+  g.fillText('PRIMARY', X(-6), Z(1.6)); g.fillText('SECONDARY', X(-3), Z(1.6));
+  g.fillText('jumper', X(1.3), Z(2.55));
+  // diode symbols, offset outward from the bridge centre
+  const sym = (a, b, label) => {
+    const mx = (a[0]+b[0])/2, mz = (a[2]+b[2])/2;
+    let dx = b[0]-a[0], dz = b[2]-a[2]; const L = Math.hypot(dx, dz); dx /= L; dz /= L;
+    let nx = -dz, nz = dx; if ((mx + nx - 2.5)**2 + (mz + nz)**2 < (mx - 2.5)**2 + mz**2){ nx = -nx; nz = -nz; }
+    const cx = X(mx + nx*0.55), cz = Z(mz + nz*0.55);
+    g.save(); g.translate(cx, cz); g.rotate(Math.atan2(dz, dx));
+    g.strokeStyle = '#d7dee7'; g.fillStyle = '#d7dee7'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(-34,0); g.lineTo(-14,0); g.moveTo(14,0); g.lineTo(34,0); g.stroke();
+    g.beginPath(); g.moveTo(-14,-16); g.lineTo(-14,16); g.lineTo(12,0); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(14,-17); g.lineTo(14,17); g.stroke();
+    g.restore();
+  };
+  sym(N1, PLUS); sym(N2, PLUS); sym(MINUS, N2); sym(MINUS, N1);
+  // capacitor symbol
+  g.save(); g.translate(X(7.0), Z(1.5)); g.strokeStyle = '#d7dee7'; g.lineWidth = 4;
+  g.beginPath(); g.moveTo(-30,-8); g.lineTo(30,-8); g.stroke();
+  g.beginPath(); g.moveTo(-30,8); g.quadraticCurveTo(0,20,30,8); g.stroke();
+  g.beginPath(); g.moveTo(0,-30); g.lineTo(0,-8); g.moveTo(0,12); g.lineTo(0,32); g.stroke();
+  g.fillStyle = '#d7dee7'; g.font = '600 26px "JetBrains Mono",monospace'; g.fillText('+', -40, -24); g.fillText('C', 46, 2);
+  g.restore();
+  // lamp symbol
+  g.save(); g.translate(X(12.15), Z(1.9)); g.strokeStyle = '#d7dee7'; g.lineWidth = 4;
+  g.beginPath(); g.arc(0,0,22,0,Math.PI*2); g.stroke();
+  g.beginPath(); g.moveTo(-15,-15); g.lineTo(15,15); g.moveTo(15,-15); g.lineTo(-15,15); g.stroke();
+  g.restore();
+  g.fillStyle = '#6f7f92'; g.font = '400 21px "JetBrains Mono",monospace'; g.textAlign = 'left';
+  g.fillText('Diode arrow = direction conventional current may pass', X(-0.3), Z(-4.45));
+  boardTex.needsUpdate = true;
+}
+function addLabels(){
+  ['D1','D2','D3','D4'].forEach(n => {
+    const s = makeLabel(n, n === 'D1' || n === 'D3' ? '#ffcf80' : '#8fe3ff', 0.42);
+    s.position.copy(diodes[n].g.position); s.position.y += 0.62; diodes[n].label = s; scene.add(s);
+  });
+  const add = (t, c, h, x, y, z) => { const s = makeLabel(t, c, h); s.position.set(x, y, z); scene.add(s); return s; };
+  add('~ 230 V', '#e2e9f1', 0.5, -10.4, 2.0, 0);
+  add('Np = 230 t', '#9fb0c4', 0.34, -6, 4.05, 0);
+  add('Ns = 12 t', '#9fb0c4', 0.34, -3, 4.05, 0);
+  add('C', '#e2e9f1', 0.45, 8, 2.05, 0.55);
+  add('LAMP', '#e2e9f1', 0.4, 11, 2.15, 0);
+  add('+', '#ffb43b', 0.5, 4.95, 0.65, -0.35);
+  add('−', '#9fb0c4', 0.5, 0.05, 0.65, -0.35);
+}
+
+/* ---------------- visual update ---------------- */
+const tmpV = new THREE.Vector3(), tmpC = new THREE.Color(), baseC = new THREE.Color();
+let fVis = S.f, lampB = 0;
+
+function applyTopology(){
+  const half = S.mode === 'half';
+  ['D2','D4'].forEach(n => { diodes[n].g.visible = !half; pathBy[n].mesh.visible = !half; pathBy[n].active = !half; if (diodes[n].label) diodes[n].label.visible = !half; });
+  diodes.D3.g.visible = !half; if (diodes.D3.label) diodes.D3.label.visible = !half;
+  capGroup.visible = S.cap; pathBy.CAP.mesh.visible = S.cap; pathBy.CAP.active = S.cap;
+  $('#cD2').classList.toggle('na', half); $('#cD4').classList.toggle('na', half); $('#cD3').classList.toggle('na', half);
+  $('#cval').disabled = !S.cap;
+}
+
+function pathColor(P, hb){
+  const n = P.name, Iv = I[n] || 0, full = S.mode === 'full', pos = vs >= 0;
+  let target = COL.lav;
+  switch (n){
+    case 'PRI': case 'PRI_INT': case 'SEC': baseC.copy(Iv >= 0 ? COL.amber : COL.cyan); break;
+    case 'D1': case 'D3': baseC.copy(COL.amber); target = COL.amber; break;
+    case 'D2': case 'D4': baseC.copy(COL.cyan); target = COL.cyan; break;
+    case 'RP1': case 'RN1': baseC.copy(full ? (pos ? COL.amber : COL.cyan) : COL.amber); target = full ? COL.lav : COL.amber; break;
+    case 'CAP': baseC.copy(Iv >= 0 ? (full ? (pos ? COL.amber : COL.cyan) : COL.amber) : COL.green); target = COL.green; break;
+    default: // load side
+      if (S.cap && ib < iL*0.5) baseC.copy(COL.green);
+      else baseC.copy(full ? (pos ? COL.amber : COL.cyan) : COL.amber);
+      target = S.cap ? COL.green : (full ? COL.lav : COL.amber);
+  }
+  return P.col.copy(baseC).lerp(target, hb);
+}
+
+function updateVisuals(realDt, simDt){
+  fVis = S.f * S.ts;
+  const hb = smooth(3, 10, fVis);
+  const dir = S.electron ? -1 : 1;
+  for (const P of paths){
+    const avg = simDt > 0 ? P.sumAbs / simDt : 0; P.sumAbs = 0;
+    const target = P.active ? Math.min(1, avg/IREF) : 0;
+    P.bright += (target - P.bright) * Math.min(1, realDt/0.08);
+    const k = P.active ? 0.14 + 0.86*P.bright : 0;
+    const c = pathColor(P, hb);
+    const r = c.r*k, g = c.g*k, b = c.b*k;
+    let off = P.offset % P.len; if (off < 0) off += P.len;
+    for (let i = 0; i < P.n; i++){
+      const idx = (P.start + i)*3;
+      let s = i*P.sp + off; if (s >= P.len) s -= P.len;
+      pointAt(P, s, tmpV);
+      pPos[idx] = tmpV.x; pPos[idx+1] = tmpV.y; pPos[idx+2] = tmpV.z;
+      pCol[idx] = r; pCol[idx+1] = g; pCol[idx+2] = b;
+    }
+  }
+  pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true;
+
+  for (const n in diodes){ diodes[n].glowMat.opacity = 0.75*diodes[n].lp; }
+
+  bulbMat.emissiveIntensity = 1.6*lampB;
+  lampLight.intensity = 3.2*lampB;
+  halo.material.opacity = Math.min(1, lampB*1.1);
+  const hs = 0.6 + 2.6*lampB; halo.scale.set(hs, hs, 1);
+
+  const flux = -Math.cos(phi);
+  tmpC.copy(flux >= 0 ? COL.amber : COL.cyan).lerp(COL.lav, hb);
+  const fi = (1-hb)*Math.abs(flux)*0.32 + hb*0.16;
+  M.core.emissive.copy(tmpC).multiplyScalar(fi);
+
+  phasor.rotation.y = -phi;
+  const blur = smooth(1.5, 5, fVis);
+  arrowMat.opacity = 1 - blur; blurMat.opacity = 0.55*blur;
+
+  chargeBar.scale.y = Math.max(0.001, Vc/VP*1.38);
+  chargeBar.position.y = 0.02 + chargeBar.scale.y/2;
+}
+
+/* ---------------- oscilloscope ---------------- */
+const sc = $('#scope'), sg = sc.getContext('2d');
+function sizeScope(){
+  const r = sc.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2);
+  sc.width = Math.max(1, Math.round(r.width*d)); sc.height = Math.max(1, Math.round(r.height*d)); sc._d = d;
+}
+function fmtTime(s){ return s >= 1 ? s.toFixed(2) + ' s' : s >= 0.01 ? (s*1000).toFixed(1) + ' ms' : (s*1000).toFixed(2) + ' ms'; }
+const xs = new Float32Array(BUF), v1 = new Float32Array(BUF), v2 = new Float32Array(BUF), v3 = new Float32Array(BUF);
+const stats = { avg:0, min:0, max:0, n:0 };
+function drawScope(){
+  const d = sc._d || 1, w = sc.width, h = sc.height;
+  const L = 46*d, R = 12*d, T = 30*d, B = 24*d, pw = w - L - R, ph = h - T - B;
+  sg.fillStyle = '#070a0e'; sg.fillRect(0,0,w,h);
+  sg.lineWidth = 1*d;
+  for (let i = 0; i <= 10; i++){ const x = L + pw*i/10; sg.strokeStyle = i === 0 || i === 10 ? '#263240' : '#141c25'; sg.beginPath(); sg.moveTo(x, T); sg.lineTo(x, T+ph); sg.stroke(); }
+  for (let j = 0; j <= 8; j++){ const y = T + ph*j/8; sg.strokeStyle = j === 4 ? '#2f3d4d' : (j === 0 || j === 8 ? '#263240' : '#141c25'); sg.beginPath(); sg.moveTo(L, y); sg.lineTo(L+pw, y); sg.stroke(); }
+  const yOf = v => T + ph/2 - v/20*(ph/2);
+  sg.fillStyle = '#6b7a8c'; sg.font = (10.5*d) + 'px "JetBrains Mono",monospace'; sg.textAlign = 'right'; sg.textBaseline = 'middle';
+  [20,10,0,-10,-20].forEach(v => sg.fillText((v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v) + ' V', L - 6*d, yOf(v)));
+
+  const W = CYCLES / S.f, t0 = simT - W;
+  let n = 0, sum = 0, mn = 1e9, mx = -1e9, i = (bIdx - 1 + BUF) % BUF;
+  for (let c = 0; c < bCount; c++){
+    const t = bT[i]; if (t < t0) break;
+    xs[n] = L + (t - t0)/W*pw; v1[n] = yOf(bVs[i]); v2[n] = yOf(bRect[i]); v3[n] = yOf(bOut[i]);
+    sum += bOut[i]; if (bOut[i] < mn) mn = bOut[i]; if (bOut[i] > mx) mx = bOut[i];
+    n++; i = (i - 1 + BUF) % BUF;
+  }
+  stats.n = n; if (n){ stats.avg = sum/n; stats.min = mn; stats.max = mx; }
+  const line = (arr, color, width, dash) => {
+    if (n < 2) return;
+    sg.strokeStyle = color; sg.lineWidth = width*d; sg.setLineDash(dash ? dash.map(x => x*d) : []);
+    sg.beginPath(); sg.moveTo(xs[0], arr[0]); for (let k = 1; k < n; k++) sg.lineTo(xs[k], arr[k]); sg.stroke(); sg.setLineDash([]);
+  };
+  sg.save(); sg.beginPath(); sg.rect(L, T, pw, ph); sg.clip();
+  const zero = yOf(0);
+  sg.save(); sg.beginPath(); sg.rect(L, T, pw, zero - T); sg.clip(); line(v1, '#ffb43b', 1.8); sg.restore();
+  sg.save(); sg.beginPath(); sg.rect(L, zero, pw, T + ph - zero); sg.clip(); line(v1, '#3fd0ff', 1.8); sg.restore();
+  if (S.cap) line(v2, '#8b97a6', 1.3, [5,4]);
+  sg.shadowColor = '#6dff9a'; sg.shadowBlur = 6*d; line(v3, '#6dff9a', 2.4); sg.shadowBlur = 0;
+  if (n){ sg.fillStyle = '#ffffff'; sg.beginPath(); sg.arc(xs[0], v3[0], 3*d, 0, Math.PI*2); sg.fill(); }
+  sg.restore();
+
+  // header legend
+  sg.textAlign = 'left'; sg.textBaseline = 'middle'; sg.font = (11.5*d) + 'px "IBM Plex Sans",sans-serif';
+  let x = L; const y = 15*d;
+  const item = (draw, text) => { draw(x, y); x += 24*d; sg.fillStyle = '#c9d2dd'; sg.fillText(text, x, y); x += sg.measureText(text).width + 18*d; };
+  item((x0,y0) => { sg.strokeStyle = '#ffb43b'; sg.lineWidth = 2*d; sg.beginPath(); sg.moveTo(x0,y0); sg.lineTo(x0+9*d,y0); sg.stroke(); sg.strokeStyle = '#3fd0ff'; sg.beginPath(); sg.moveTo(x0+9*d,y0); sg.lineTo(x0+18*d,y0); sg.stroke(); }, 'CH1  Vs, AC input');
+  if (S.cap) item((x0,y0) => { sg.strokeStyle = '#8b97a6'; sg.lineWidth = 1.5*d; sg.setLineDash([4*d,3*d]); sg.beginPath(); sg.moveTo(x0,y0); sg.lineTo(x0+18*d,y0); sg.stroke(); sg.setLineDash([]); }, 'Rectified, before C');
+  if (x < w - 160*d) item((x0,y0) => { sg.strokeStyle = '#6dff9a'; sg.lineWidth = 2.5*d; sg.beginPath(); sg.moveTo(x0,y0); sg.lineTo(x0+18*d,y0); sg.stroke(); }, 'CH2  Vout across load');
+  sg.fillStyle = '#6b7a8c'; sg.font = (10.5*d) + 'px "JetBrains Mono",monospace'; sg.textBaseline = 'middle';
+  sg.textAlign = 'left'; sg.fillText('5 V/div', L, h - 11*d);
+  sg.textAlign = 'right'; sg.fillText(fmtTime(W/10) + '/div  ·  ' + CYCLES + ' cycles shown', L + pw, h - 11*d);
+}
+
+
+let uiDirty = false;
+S.auto = false; S.cap = false; S.mode = 'full'; S.f = 0.5; S.playing = true;
+sc._d = 1.55;
+renderer.setPixelRatio(1);
+renderer.setSize(1080, 770);
+camera.aspect = 1080/770; camera.updateProjectionMatrix();
+renderer.domElement.style.width = '1080px'; renderer.domElement.style.height = '770px';
+
+/* ---------- script ---------- */
+const FPS = 30, DUR = 50;
+const fAt = t => t < 30 ? 0.5 : t < 38 ? 0.5*Math.pow(100, (t-30)/8) : 50;
+const V3 = (x,y,z) => new THREE.Vector3(x,y,z);
+const SHOT = {
+  wide0:{ p:V3(0.5,17,24),   t:V3(0.5,0.5,0.5), drift:0.05 },
+  src:  { p:V3(-6,6.5,10.5), t:V3(-7.5,1.2,0),  drift:0.03 },
+  xfmr: { p:V3(-3.2,4.8,8.4),t:V3(-4.5,1.8,0),  drift:-0.035 },
+  bridge:{p:V3(2.5,9.2,6.2), t:V3(2.5,0.2,0.3), drift:0.0 },
+  out:  { p:V3(6.5,8,10),    t:V3(7.5,0.6,0.3), drift:0.02 },
+  cap:  { p:V3(7.4,5.4,8.6), t:V3(8.6,0.8,0.5), drift:0.02 },
+  sweep:{ p:V3(3,13,17),     t:V3(3,0.5,0.5),   drift:0.03 },
+  wide1:{ p:V3(1.5,15,20.5), t:V3(1.5,0.5,0.5), drift:0.045 }
+};
+const SCENES = [
+  { t0:0,  step:0, shot:'wide0',  eb:'ELECTRONICS IN 50 SECONDS', title:'How does AC become DC?', body:'Follow the current through a bridge rectifier.' },
+  { t0:4,  step:1, shot:'src',    eb:'STEP 1 · AC SUPPLY', title:'AC keeps switching direction', body:'Real mains flips 50× a second. Slowed here to 0.5 Hz.' },
+  { t0:10, step:2, shot:'xfmr',   eb:'STEP 2 · TRANSFORMER', title:'230 V in, 12 V out', body:'Changing flux in the iron core induces a smaller voltage.<br>Vpeak = √2 × 12 V ≈ 17 V' },
+  { t0:14, step:3, shot:'bridge', eb:'STEP 3 · BRIDGE RECTIFIER', title:'', body:'The other two diodes block. Watch the colours swap.' },
+  { t0:22, step:3, shot:'out',    eb:'STEP 3 · RESULT', title:'One direction through the lamp', body:'But it drops to zero twice per cycle: pulsating DC.' },
+  { t0:28, step:4, shot:'cap',    eb:'STEP 4 · SMOOTHING CAPACITOR', title:'Add a capacitor', body:'It stores charge at every peak and feeds the lamp in between.' },
+  { t0:30, step:4, shot:'sweep',  eb:'STEP 4 · SPEED UP TO REAL MAINS', title:'', body:'Faster peaks refill the capacitor before it can empty.' },
+  { t0:38, step:4, shot:'wide1',  eb:'RESULT', title:'Smooth DC!', body:'' },
+  { t0:46, step:5, shot:'wide1',  eb:'', title:'', body:'' }
+];
+const sceneAt = t => { let i = 0; while (i+1 < SCENES.length && SCENES[i+1].t0 <= t) i++; return i; };
+const ease = x => x<0?0:x>1?1:x*x*(3-2*x);
+function shotPose(name, el){
+  const s = SHOT[name], off = s.p.clone().sub(s.t);
+  off.applyAxisAngle(V3(0,1,0), s.drift*el);
+  return { p:s.t.clone().add(off), t:s.t.clone() };
+}
+function cameraAt(t){
+  const i = sceneAt(t), sc0 = SCENES[i];
+  let pose = shotPose(sc0.shot, t - sc0.t0);
+  if (i > 0 && SCENES[i-1].shot !== sc0.shot){
+    const prev = SCENES[i-1], k = ease((t - sc0.t0)/1.0);
+    if (k < 1){ const a = shotPose(prev.shot, sc0.t0 - prev.t0); pose.p.lerpVectors(a.p, pose.p, k); pose.t.lerpVectors(a.t, pose.t, k); }
+  }
+  camera.position.copy(pose.p); camera.lookAt(pose.t);
+}
+
+/* ---------- header text with pop animation ---------- */
+let lastKey = '', popT = -10;
+function setHead(t, eb, title, body, color){
+  const key = eb + '|' + title;
+  if (key !== lastKey){ lastKey = key; popT = t; $('#eyebrow').textContent = eb; $('#title').innerHTML = title; $('#body').innerHTML = body; }
+  else if ($('#body').innerHTML !== body) $('#body').innerHTML = body;
+  $('#title').style.color = color || '';
+  const k = ease((t - popT)/0.3);
+  $('#head').style.opacity = k; $('#head').style.transform = 'translateY(' + ((1-k)*30) + 'px) scale(' + (0.94 + 0.06*k) + ')';
+}
+
+let capLanded = false;
+const dir = 1;
+function stepSim(h){
+  S.f = fAt(simT);
+  physics(h); branchCurrents();
+  for (const P of paths){ const Iv = I[P.name] || 0; P.offset += clamp(Iv/IREF,-4,4)*1.4*dir*h; P.sumAbs += Math.abs(Iv)*h; }
+  for (const n in diodes){ const d = diodes[n]; d.lp += (Math.min(1,(I[n]||0)/IREF) - d.lp)*Math.min(1, h/0.03); }
+  lampB += (Math.pow(vload/(VP-1.4),2) - lampB)*Math.min(1, h/0.025);
+  record();
+}
+
+window.renderAt = function(t){
+  const t0 = simT, simDt = t - simT;
+  if (simDt > 0){ const steps = Math.max(1, Math.ceil(simDt/5e-5)), h = simDt/steps; for (let k = 0; k < steps; k++) stepSim(h); }
+  // capacitor drops in at 28 s, lands and connects at 28.6 s
+  if (t >= 28.6 && !S.cap){ S.cap = true; Vc = vload; applyTopology(); }
+  capGroup.visible = t >= 28;
+  pathBy.CAP.mesh.visible = t >= 28.6;
+  if (t >= 28 && t < 29.2){
+    const u = (t - 28)/0.6;
+    capGroup.position.y = u < 1 ? 5*(1-u*u) : 0.25*Math.abs(Math.sin((t-28.6)*14))*Math.exp(-(t-28.6)*6);
+  } else capGroup.position.y = 0;
+  updateVisuals(1/FPS, Math.max(simDt, 1e-6));
+  cameraAt(t);
+  renderer.render(scene, camera);
+  drawScope();
+
+  // beat glow (120 BPM) during sections with drums
+  const beatPh = ((t % 0.5) + 0.5) % 0.5;
+  const drums = (t >= 4 && t < 28) || (t >= 30 && t < 46);
+  $('#glow').style.opacity = drums ? (0.25 + 0.75*Math.exp(-beatPh*9)).toFixed(3) : 0.2;
+  const i = sceneAt(t), s = SCENES[i];
+  const pos = vs >= 0;
+  document.querySelectorAll('#steps div').forEach((d, k) => { d.className = (k+1 === s.step) ? 'on' : (k+1 < s.step ? 'done' : ''); });
+  $('#mf').textContent = S.f < 10 ? S.f.toFixed(2) : S.f.toFixed(1);
+  $('#mv').textContent = vload.toFixed(1);
+  const fr = 2*S.f;
+  if (i === 1){
+    setHead(t, s.eb, s.title, s.body + '<br><span style="color:' + (pos ? 'var(--amber)' : 'var(--cyan)') + ';font-weight:600">' + (pos ? '→ Now terminal A is +' : '← Now terminal B is +') + '</span>');
+  } else if (i === 3){
+    const title = ib > 1e-4 ? (pos ? 'A is + → D1 and D3 open' : 'B is + → D2 and D4 open') : 'Zero crossing: all diodes off';
+    setHead(t, s.eb, title, s.body, ib > 1e-4 ? (pos ? 'var(--amber)' : 'var(--cyan)') : '#8d9bad');
+  } else if (i === 6){
+    setHead(t, s.eb, 'f = <span style="font-family:JetBrains Mono;font-variant-numeric:tabular-nums">' + (S.f < 10 ? S.f.toFixed(2) : S.f.toFixed(1)) + '</span> Hz', s.body, 'var(--amber)');
+    lastKey = s.eb + '|sweep';
+  } else if (i === 7){
+    const rip = stats.n ? (stats.max - stats.min) : 0;
+    setHead(t, s.eb, s.title, 'V out ≈ ' + stats.avg.toFixed(1) + ' V, ripple only ' + rip.toFixed(1) + ' V.<br>The diodes refill C ' + Math.round(fr) + ' times per second.', 'var(--green)');
+  } else if (i === 8){
+    setHead(t, 'SAVE THIS FOR YOUR EXAM', 'The 3 formulas', '<div class="eq"><em>Vpk</em> = √2 × Vrms</div><div class="eq"><em>Vdc</em> ≈ Vpk − 2 × 0.7 V</div><div class="eq"><em>Vripple</em> ≈ I / (2 f C)</div>');
+  } else setHead(t, s.eb, s.title, s.body);
+  $('#head').classList.toggle('card', i === 8);
+  return true;
+};
+
+window.ready = (async () => {
+  await Promise.all([document.fonts.load('600 40px "Barlow Condensed"'), document.fonts.load('700 40px "Barlow Condensed"'), document.fonts.load('400 20px "JetBrains Mono"'), document.fonts.load('600 20px "JetBrains Mono"'), document.fonts.load('400 20px "IBM Plex Sans"'), document.fonts.load('600 20px "IBM Plex Sans"')]);
+  drawBoard(); addLabels(); applyTopology();
+  capGroup.visible = false;
+  window.renderAt(0);
+  return true;
+})();
+})();
+</script>
+</body></html>
