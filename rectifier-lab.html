@@ -1,0 +1,892 @@
+<title>Bridge Rectifier Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: instrument workbench. A dark 3D bench and oscilloscope on the left, a control rack on the right, lesson notes below. */
+:root{
+  --bg:#eef1f5; --surface:#ffffff; --surface-2:#f5f7fa; --fg:#131a23; --muted:#5a6677; --line:#d6dce4;
+  --accent:#b86a00; --accent-ink:#ffffff; --accent-bg:#e7900f;
+  /* instrument colors: the bench and scope are always dark, like real lab gear */
+  --inst:#0a0e13; --inst-2:#111821; --inst-line:#1e2833; --inst-fg:#dfe6ee; --inst-muted:#7d8b9c;
+  --amber:#ffb43b; --cyan:#3fd0ff; --green:#6dff9a; --lav:#c7b6ff;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b0f14; --surface:#121921; --surface-2:#18212b; --fg:#e5eaf0; --muted:#8e9bab; --line:#25303c;
+    --accent:#ffb43b; --accent-ink:#1a1200; --accent-bg:#ffb43b; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0f14; --surface:#121921; --surface-2:#18212b; --fg:#e5eaf0; --muted:#8e9bab; --line:#25303c;
+  --accent:#ffb43b; --accent-ink:#1a1200; --accent-bg:#ffb43b; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.app{max-width:1480px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:.01em}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.brand .eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.brand h1{font-size:clamp(30px,4.2vw,46px);font-weight:700;line-height:1}
+.brand p{margin:6px 0 0;color:var(--muted);max-width:62ch}
+.fbadge{display:flex;align-items:center;gap:14px;background:var(--inst);color:var(--inst-fg);border-radius:10px;padding:10px 16px;min-width:0}
+.fbadge .lbl{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--inst-muted)}
+.fbadge .num{font-family:var(--f-mono);font-weight:600;font-size:30px;font-variant-numeric:tabular-nums;color:var(--amber);line-height:1.1}
+.fbadge .num small{font-size:15px;color:var(--inst-muted);margin-left:4px}
+.sweep{width:150px;height:6px;border-radius:3px;background:var(--inst-line);overflow:hidden;margin-top:6px}
+.sweep i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--amber))}
+
+.work{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:1000px){.work{grid-template-columns:minmax(0,1fr)}}
+.stage{display:flex;flex-direction:column;gap:12px;min-width:0}
+#view3d{position:relative;height:clamp(380px,60vh,720px);border-radius:12px;overflow:hidden;background:var(--inst);touch-action:none}
+#view3d canvas{display:block;width:100%;height:100%}
+.caption{position:absolute;left:14px;top:12px;right:14px;display:flex;align-items:center;gap:10px;pointer-events:none;
+  font-family:var(--f-display);font-weight:600;font-size:21px;color:var(--inst-fg);text-shadow:0 1px 8px #000}
+.caption .dot{width:12px;height:12px;border-radius:50%;flex:none;box-shadow:0 0 12px currentColor;background:currentColor}
+.legend{position:absolute;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px 14px;max-width:calc(100% - 24px);
+  background:rgba(10,14,19,.78);border:1px solid var(--inst-line);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--inst-fg);pointer-events:none}
+.legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.legend b{width:9px;height:9px;border-radius:50%;display:inline-block;box-shadow:0 0 8px currentColor;background:currentColor}
+.hintdrag{position:absolute;right:12px;top:46px;font-family:var(--f-mono);font-size:11px;color:var(--inst-muted);pointer-events:none}
+.scope{position:relative;height:240px;border-radius:12px;overflow:hidden;background:var(--inst);border:1px solid var(--inst-line)}
+.scope canvas{display:block;width:100%;height:100%}
+
+.rack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.card h2{font-size:20px;font-weight:600}
+.ctl{display:flex;flex-direction:column;gap:6px}
+.ctl > label,.ctl .k{font-size:12px;font-family:var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.ctl output{font-family:var(--f-mono);color:var(--fg);text-transform:none;letter-spacing:0;font-variant-numeric:tabular-nums}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--surface-2);color:var(--fg);padding:8px 14px;border-radius:8px;font-weight:500}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent-bg);border-color:var(--accent-bg);color:var(--accent-ink);font-weight:600}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface-2)}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);padding:7px 6px;font-size:13.5px;font-weight:500}
+.seg button + button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{width:100%;accent-color:var(--accent-bg)}
+input[type=range]:disabled{opacity:.4}
+.sub{font-size:12.5px;color:var(--muted);margin:0}
+.reads{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.read .k{font-size:11px;font-family:var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.read .v{font-family:var(--f-mono);font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.read .v small{font-size:12px;color:var(--muted);font-weight:400}
+.chips{display:flex;gap:6px}
+.chip{flex:1;text-align:center;font-family:var(--f-mono);font-weight:600;font-size:13px;padding:6px 0;border-radius:6px;border:1px solid var(--line);color:var(--muted);transition:background .08s,color .08s}
+.chip.na{opacity:.35;text-decoration:line-through}
+.now{font-size:14px;margin:0;min-height:4.5em}
+
+.notes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media (max-width:1100px){.notes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:620px){.notes{grid-template-columns:minmax(0,1fr)}}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}
+.note .step{font-family:var(--f-mono);font-size:12px;color:var(--accent);letter-spacing:.1em}
+.note h3{font-size:22px;font-weight:600;margin:2px 0 8px}
+.note p{margin:0 0 8px;font-size:14px}
+.eq{font-family:var(--f-mono);font-size:13px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:6px 9px;margin:6px 0;overflow-x:auto;white-space:nowrap}
+.try{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.try h2{font-size:22px;font-weight:600;margin-bottom:6px}
+.try ol{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px;max-width:110ch}
+@media (max-width:520px){.caption{font-size:17px}.legend{font-size:11.5px}.hintdrag{display:none}}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow">Power electronics · Lab 3</div>
+      <h1>Bridge Rectifier Lab</h1>
+      <p>Follow the charge from a 230 V mains outlet, through a step-down transformer and four diodes, into a capacitor and a lamp. The supply starts very slowly so you can watch each half-cycle, then sweeps up to mains frequency.</p>
+    </div>
+    <div class="fbadge" aria-live="off">
+      <div>
+        <div class="lbl">Supply frequency</div>
+        <div class="num"><span id="fNum">0.20</span><small>Hz</small></div>
+        <div class="sweep" title="Sweep progress"><i id="sweepBar"></i></div>
+      </div>
+      <div>
+        <div class="lbl">Period</div>
+        <div class="num" style="font-size:20px;color:var(--inst-fg)"><span id="tNum">5.00 s</span></div>
+        <div class="lbl" id="sweepTxt" style="margin-top:6px">Sweeping</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="work">
+    <section class="stage">
+      <div id="view3d" aria-label="3D model of a transformer, bridge rectifier, filter capacitor and lamp with animated current">
+        <div class="caption"><span class="dot" id="capDot" style="color:var(--amber)"></span><span id="capTxt">Loading the bench…</span></div>
+        <div class="hintdrag">Drag to orbit · scroll or pinch to zoom</div>
+        <div class="legend" id="legend">
+          <span><b style="color:var(--amber)"></b>Positive half-cycle (A +)</span>
+          <span><b style="color:var(--cyan)"></b>Negative half-cycle (B +)</span>
+          <span><b style="color:var(--green)"></b>Supplied by capacitor</span>
+          <span><b style="color:var(--lav)"></b>Too fast to follow: both halves blur</span>
+          <span id="flowNote" style="color:var(--inst-muted)">Dots show conventional current (+ → −)</span>
+        </div>
+      </div>
+      <div class="scope"><canvas id="scope" aria-label="Oscilloscope showing AC input, rectified and DC output voltages"></canvas></div>
+    </section>
+
+    <aside class="rack">
+      <div class="card">
+        <div class="btns">
+          <button class="btn primary" id="play">Pause</button>
+          <button class="btn" id="restart">Restart sweep</button>
+          <button class="btn" id="resetView">Reset view</button>
+        </div>
+        <div class="ctl">
+          <label for="freq">Frequency <output id="freqOut">0.20 Hz</output></label>
+          <input type="range" id="freq" min="0" max="1000" value="0">
+          <p class="sub" id="autoNote">Auto sweep is running: 0.2 Hz rising to 50 Hz over 100 s. Moving the slider stops it.</p>
+        </div>
+        <div class="ctl">
+          <span class="k">Sweep ends at</span>
+          <div class="seg" data-key="fEnd"><button aria-pressed="true" data-v="50">50 Hz (EU, Asia)</button><button aria-pressed="false" data-v="60">60 Hz (Americas)</button></div>
+        </div>
+        <div class="ctl">
+          <span class="k">Rectifier</span>
+          <div class="seg" data-key="mode"><button aria-pressed="false" data-v="half">Half-wave (1 diode)</button><button aria-pressed="true" data-v="full">Full-wave bridge</button></div>
+        </div>
+        <div class="ctl">
+          <span class="k">Smoothing capacitor</span>
+          <div class="seg" data-key="cap"><button aria-pressed="false" data-v="0">Removed</button><button aria-pressed="true" data-v="1">Connected</button></div>
+        </div>
+        <div class="ctl">
+          <label for="cval">Capacitance <output id="cOut">1000 µF</output></label>
+          <input type="range" id="cval" min="0" max="5" step="1" value="3">
+        </div>
+        <div class="ctl">
+          <label for="rval">Load resistance <output id="rOut">100 Ω</output></label>
+          <input type="range" id="rval" min="0" max="5" step="1" value="2">
+        </div>
+        <div class="ctl">
+          <span class="k">Playback speed</span>
+          <div class="seg" data-key="ts"><button aria-pressed="true" data-v="1">Real time</button><button aria-pressed="false" data-v="0.2">1/5 ×</button><button aria-pressed="false" data-v="0.02">1/50 ×</button></div>
+        </div>
+        <div class="ctl">
+          <span class="k">Dots show</span>
+          <div class="seg" data-key="electron"><button aria-pressed="true" data-v="0">Conventional current</button><button aria-pressed="false" data-v="1">Electron flow</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Live readings</h2>
+        <div class="reads">
+          <div class="read"><div class="k">Vs secondary</div><div class="v"><span id="rVs">0.0</span> <small>V</small></div></div>
+          <div class="read"><div class="k">V out (avg DC)</div><div class="v"><span id="rVdc">0.0</span> <small>V</small></div></div>
+          <div class="read"><div class="k">Ripple p-p</div><div class="v"><span id="rRip">0.0</span> <small>V</small></div></div>
+          <div class="read"><div class="k">Ripple freq.</div><div class="v"><span id="rRf">0.4</span> <small>Hz</small></div></div>
+          <div class="read"><div class="k">Load current</div><div class="v"><span id="rIl">0</span> <small>mA</small></div></div>
+          <div class="read"><div class="k">Predicted ripple</div><div class="v"><span id="rPred">–</span> <small id="rPredU">V</small></div></div>
+        </div>
+        <div class="ctl">
+          <span class="k">Diodes conducting</span>
+          <div class="chips"><span class="chip" id="cD1">D1</span><span class="chip" id="cD2">D2</span><span class="chip" id="cD3">D3</span><span class="chip" id="cD4">D4</span></div>
+        </div>
+        <div class="ctl">
+          <span class="k">What is happening</span>
+          <p class="now" id="nowTxt">The simulation starts at 0.2 Hz, one full cycle every 5 seconds.</p>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="notes" aria-label="How the circuit works">
+    <article class="note">
+      <div class="step">STAGE 1 OF 4</div>
+      <h3>Step down the voltage</h3>
+      <p>Mains current in the primary coil makes an alternating magnetic flux in the iron core. The flux induces a smaller voltage in the secondary. The frequency does not change.</p>
+      <div class="eq">Vs / Vp = Ns / Np = 12 V / 230 V</div>
+      <div class="eq">Vpeak = √2 × Vrms = √2 × 12 ≈ 17 V</div>
+    </article>
+    <article class="note">
+      <div class="step">STAGE 2 OF 4</div>
+      <h3>Rectify with diodes</h3>
+      <p>A silicon diode conducts only when its anode is about 0.7 V above its cathode. Half-wave uses one diode and throws away the negative half. The bridge steers both halves through the load in the same direction.</p>
+      <div class="eq">Half-wave: Vout,pk = Vp − 0.7 V</div>
+      <div class="eq">Bridge: Vout,pk = Vp − 1.4 V ≈ 15.6 V</div>
+    </article>
+    <article class="note">
+      <div class="step">STAGE 3 OF 4</div>
+      <h3>Smooth with a capacitor</h3>
+      <p>Near each peak the diodes conduct briefly and charge the capacitor. Between peaks every diode is reverse-biased and the capacitor alone feeds the load, so the voltage sags a little. That sag is the ripple.</p>
+      <div class="eq">Vr(p-p) ≈ I<sub>L</sub> / (f<sub>r</sub> · C)</div>
+      <div class="eq">f<sub>r</sub> = f (half-wave), 2f (bridge)</div>
+    </article>
+    <article class="note">
+      <div class="step">STAGE 4 OF 4</div>
+      <h3>Why frequency matters</h3>
+      <p>With 100 Ω and 1000 µF the time constant RC is 0.1 s. At 0.2 Hz the bridge recharges every 2.5 s, so the capacitor empties long before the next peak. At 50 Hz it recharges every 10 ms and the output is almost flat.</p>
+      <div class="eq">50 Hz: Vr ≈ 0.156 A / (100 Hz × 1000 µF) ≈ 1.6 V</div>
+      <div class="eq">Design rule: RC ≫ 1 / f<sub>r</sub></div>
+    </article>
+  </section>
+
+  <section class="try">
+    <h2>Try this</h2>
+    <ol>
+      <li>At the slow start, follow one amber dot from terminal A through D1, the lamp and D3 back to B. Then follow a cyan dot through D2 and D4. Both flow the same way through the lamp.</li>
+      <li>Remove the capacitor. The lamp now flashes twice per cycle, and the scope shows pulsating DC that touches zero.</li>
+      <li>Switch to half-wave. D2 and D4 are taken out and D3 becomes a plain wire. The lamp flashes once per cycle, and the ripple doubles.</li>
+      <li>Let the sweep reach 50 Hz, then set playback to 1/50 ×. You can watch short charging pulses at each peak while the capacitor carries the load in between.</li>
+      <li>At 50 Hz, change C and R. A larger C or a larger R (smaller current) gives less ripple, as the formula predicts.</li>
+      <li>Switch to electron flow. Electrons move opposite to conventional current, against each diode arrow.</li>
+    </ol>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------------- circuit model ---------------- */
+const VP = 17.0, VD = 0.7, RS = 1.5, IREF = 0.16, F_MIN = 0.2, F_SLIDER_MAX = 60;
+const C_OPTS = [100,220,470,1000,2200,4700], R_OPTS = [22,47,100,220,470,1000];
+const S = { playing: !reduceMotion, auto:true, f:F_MIN, fEnd:50, rampT:0, rampDur:100,
+            mode:'full', cap:true, C:1000e-6, R:100, ts:1, electron:false };
+let phi = 0, simT = 0, Vc = 0, ib = 0, iL = 0, vs = 0, vrect = 0, vload = 0;
+const I = {};
+const smooth = (a,b,x) => { const t = Math.min(1, Math.max(0, (x-a)/(b-a))); return t*t*(3-2*t); };
+const clamp = (x,a,b) => Math.min(b, Math.max(a, x));
+
+function physics(h){
+  if (S.auto){
+    S.rampT += h;
+    const u = Math.min(1, S.rampT / S.rampDur);
+    S.f = F_MIN * Math.pow(S.fEnd / F_MIN, u);
+    if (u >= 1){ S.auto = false; uiDirty = true; }
+  }
+  phi += 2*Math.PI*S.f*h;
+  if (phi > 2*Math.PI) phi -= 2*Math.PI;
+  vs = VP*Math.sin(phi);
+  vrect = S.mode === 'full' ? Math.abs(vs) - 2*VD : vs - VD;
+  if (S.cap){
+    ib = vrect > Vc ? (vrect - Vc)/RS : 0;
+    Vc += (ib - Vc/S.R)/S.C*h;
+    if (Vc < 0) Vc = 0;
+    vload = Vc; iL = Vc/S.R;
+  } else {
+    ib = vrect > 0 ? vrect/(S.R + RS) : 0;
+    vload = ib*S.R; iL = ib; Vc = vload;
+  }
+  simT += h;
+}
+function branchCurrents(){
+  const pos = vs >= 0, full = S.mode === 'full';
+  const sec = full ? (pos ? ib : -ib) : ib;
+  I.SEC = sec;
+  I.PRI = sec + 0.035*(-Math.cos(phi));   // load current reflected + magnetising current (lags by 90°)
+  I.PRI_INT = I.PRI;
+  I.D1 = full ? (pos ? ib : 0) : ib;
+  I.D3 = I.D1;
+  I.D2 = full ? (pos ? 0 : ib) : 0;
+  I.D4 = I.D2;
+  I.RP1 = ib; I.RN1 = ib;
+  I.RP2 = iL; I.LOAD = iL; I.RN2 = iL;
+  I.CAP = S.cap ? ib - iL : 0;
+}
+
+/* ---------------- scope buffer ---------------- */
+const BUF = 4096;
+const bT = new Float64Array(BUF), bVs = new Float32Array(BUF), bRect = new Float32Array(BUF), bOut = new Float32Array(BUF);
+let bIdx = 0, bCount = 0, lastRec = -1;
+const CYCLES = 3;
+function record(){
+  const W = CYCLES / S.f;
+  if (simT - lastRec < W/1500) return;
+  lastRec = simT;
+  bT[bIdx] = simT; bVs[bIdx] = vs; bRect[bIdx] = Math.max(0, vrect)*S.R/(S.R+RS); bOut[bIdx] = vload;
+  bIdx = (bIdx + 1) % BUF; if (bCount < BUF) bCount++;
+}
+
+/* ---------------- three.js scene ---------------- */
+const host = $('#view3d');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+host.insertBefore(renderer.domElement, host.firstChild);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0a0e13');
+scene.fog = new THREE.Fog('#0a0e13', 45, 90);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.maxPolarAngle = 1.45; controls.minDistance = 5; controls.maxDistance = 60;
+const TARGET = new THREE.Vector3(0.2, 0.3, 0.7);
+
+function frameCamera(){
+  const a = camera.aspect;
+  const d = clamp(13.6/(Math.tan(19*Math.PI/180)*a), 17, 44);
+  const dir = new THREE.Vector3(0.02, 0.70, 0.71).normalize();
+  camera.position.copy(TARGET).addScaledVector(dir, d);
+  controls.target.copy(TARGET); controls.update();
+}
+
+scene.add(new THREE.HemisphereLight('#cfd8ff', '#1b1510', 0.55));
+const sun = new THREE.DirectionalLight('#ffffff', 0.85);
+sun.position.set(6, 16, 9); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left:-15, right:15, top:9, bottom:-9, near:1, far:40 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+const fill = new THREE.DirectionalLight('#9fb4ff', 0.25); fill.position.set(-10, 6, -8); scene.add(fill);
+
+const COL = { amber:new THREE.Color('#ffb43b'), cyan:new THREE.Color('#3fd0ff'), green:new THREE.Color('#6dff9a'), lav:new THREE.Color('#c7b6ff') };
+const M = {
+  copper: new THREE.MeshStandardMaterial({ color:'#c27b3f', metalness:0.75, roughness:0.32, depthWrite:false }),
+  enamel: new THREE.MeshStandardMaterial({ color:'#c9873c', metalness:0.6, roughness:0.38, depthWrite:false }),
+  metal:  new THREE.MeshStandardMaterial({ color:'#2a313b', metalness:0.55, roughness:0.45 }),
+  core:   new THREE.MeshStandardMaterial({ color:'#4b5361', metalness:0.6, roughness:0.5, emissive:'#000000' }),
+  pad:    new THREE.MeshStandardMaterial({ color:'#c9ced6', metalness:0.9, roughness:0.25 }),
+  diode:  new THREE.MeshStandardMaterial({ color:'#16181d', metalness:0.2, roughness:0.45 }),
+  band:   new THREE.MeshStandardMaterial({ color:'#d6dbe2', metalness:0.8, roughness:0.3 }),
+  brass:  new THREE.MeshStandardMaterial({ color:'#a8894b', metalness:0.85, roughness:0.3 }),
+  capBody:new THREE.MeshStandardMaterial({ color:'#21468f', metalness:0.25, roughness:0.4 }),
+  capTop: new THREE.MeshStandardMaterial({ color:'#b9c0ca', metalness:0.85, roughness:0.3 }),
+  red:    new THREE.MeshStandardMaterial({ color:'#c8302e', metalness:0.3, roughness:0.4 }),
+  black:  new THREE.MeshStandardMaterial({ color:'#111317', metalness:0.3, roughness:0.4 })
+};
+
+/* board */
+const boardCanvas = document.createElement('canvas');
+boardCanvas.width = 2600; boardCanvas.height = 1000;
+const boardTex = new THREE.CanvasTexture(boardCanvas);
+boardTex.encoding = THREE.sRGBEncoding; boardTex.anisotropy = 8;
+const board = new THREE.Mesh(new THREE.PlaneGeometry(26, 10), new THREE.MeshStandardMaterial({ map:boardTex, roughness:0.85, metalness:0.05 }));
+board.rotation.x = -Math.PI/2; board.receiveShadow = true; board.renderOrder = -1;
+scene.add(board);
+const base = new THREE.Mesh(new THREE.BoxGeometry(26.3, 0.35, 10.3), new THREE.MeshStandardMaterial({ color:'#0d1319', roughness:0.9 }));
+base.position.y = -0.18; scene.add(base);
+
+/* ---------- circuit paths ---------- */
+const Y = 0.15;
+function helix(cx, cz, r, y0, y1, turns, a0){
+  const pts = [], N = Math.round(turns*30);
+  for (let i = 0; i <= N; i++){ const u = i/N, a = a0 + u*turns*2*Math.PI; pts.push([cx + r*Math.cos(a), y0 + (y1-y0)*u, cz + r*Math.sin(a)]); }
+  return pts;
+}
+const SPACING = 0.34;
+const paths = [];
+const pathBy = {};
+function addPath(name, pts, opts){
+  opts = opts || {};
+  const P = { name, pts: pts.map(p => new THREE.Vector3(p[0], p[1], p[2])), cum:[0], offset:0, bright:0, active:true, sumAbs:0, col:new THREE.Color(), mesh:null };
+  for (let i = 1; i < P.pts.length; i++) P.cum.push(P.cum[i-1] + P.pts[i].distanceTo(P.pts[i-1]));
+  P.len = P.cum[P.cum.length-1];
+  P.n = Math.max(2, Math.round(P.len / SPACING));
+  P.sp = P.len / P.n;
+  if (opts.wire !== false){
+    const cp = new THREE.CurvePath();
+    for (let i = 1; i < P.pts.length; i++) cp.add(new THREE.LineCurve3(P.pts[i-1], P.pts[i]));
+    const geo = new THREE.TubeGeometry(cp, Math.ceil(P.len/0.035), opts.r || 0.05, 8, false);
+    P.mesh = new THREE.Mesh(geo, opts.mat || M.copper);
+    P.mesh.renderOrder = 1; P.mesh.castShadow = true;
+    scene.add(P.mesh);
+  }
+  paths.push(P); pathBy[name] = P;
+  return P;
+}
+function pointAt(P, s, out){
+  const c = P.cum; let lo = 0, hi = c.length - 1;
+  while (hi - lo > 1){ const m = (lo + hi) >> 1; if (c[m] <= s) lo = m; else hi = m; }
+  const seg = c[hi] - c[lo] || 1;
+  return out.copy(P.pts[lo]).lerp(P.pts[hi], (s - c[lo]) / seg);
+}
+
+// AC source loop (primary)
+const priHelix = helix(-6, 0, 0.45, 2.9, 0.7, 9, Math.PI);
+addPath('PRI', [[-9.0,Y,-1.2],[-7.4,Y,-1.2],[-7.4,2.9,-1.2]].concat(priHelix, [[-7.4,0.7,1.2],[-7.4,Y,1.2],[-9.0,Y,1.2]]), { mat:M.enamel, r:0.045 });
+addPath('PRI_INT', [[-9.0,Y,1.2],[-10.4,Y,1.2],[-10.4,Y,-1.2],[-9.0,Y,-1.2]], { wire:false });
+// secondary: from N2 via B, up the coil, out through A to N1 (positive = A drives current out into N1)
+const secHelix = helix(-3, 0, 0.45, 0.7, 2.9, 5, 0);
+addPath('SEC', [[2.5,Y,2],[-1.6,Y,2],[-1.6,0.7,1.0]].concat(secHelix, [[-1.6,2.9,-1.0],[-1.6,Y,-2],[2.5,Y,-2]]), { mat:M.enamel, r:0.045 });
+// bridge: N1 (2.5,-2) top, N2 (2.5,2) bottom, PLUS (4.5,0) right, MINUS (0.5,0) left; each path runs anode → cathode
+const N1 = [2.5,Y,-2], N2 = [2.5,Y,2], PLUS = [4.5,Y,0], MINUS = [0.5,Y,0];
+addPath('D1', [N1, PLUS]);
+addPath('D2', [N2, PLUS]);
+addPath('D3', [MINUS, N2]);
+addPath('D4', [MINUS, N1]);
+// DC side
+addPath('RP1', [PLUS,[6,Y,0],[6,Y,-2.5],[8,Y,-2.5]]);
+addPath('RP2', [[8,Y,-2.5],[11,Y,-2.5],[11,Y,-1]]);
+addPath('LOAD', [[11,Y,-1],[11,Y,-0.25],[11,0.95,-0.12],[11,1.32,-0.12],[11,1.32,0.12],[11,0.95,0.12],[11,Y,0.25],[11,Y,1]], { r:0.035 });
+addPath('RN2', [[11,Y,1],[11,Y,3.5],[8,Y,3.5]]);
+addPath('RN1', [[8,Y,3.5],[0.5,Y,3.5],[0.5,Y,2.7],[0.5,0.85,2.35],[0.5,0.85,1.65],[0.5,Y,1.3],MINUS]);
+addPath('CAP', [[8,Y,-2.5],[8,Y,0.2],[8,Y,0.9],[8,Y,3.5]]);
+
+/* pads at circuit nodes */
+const padGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.04, 24);
+[N1, N2, PLUS, MINUS, [8,Y,-2.5], [8,Y,3.5], [11,Y,-1], [11,Y,1], [-1.6,Y,2], [-1.6,Y,-2], [-7.4,Y,-1.2], [-7.4,Y,1.2]].forEach(p => {
+  const m = new THREE.Mesh(padGeo, M.pad); m.position.set(p[0], 0.02, p[2]); m.receiveShadow = true; scene.add(m);
+});
+
+/* AC source */
+const src = new THREE.Group(); scene.add(src);
+{
+  const box = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 3.2), M.metal);
+  box.position.set(-10.4, 0.6, 0); box.castShadow = true; box.receiveShadow = true; src.add(box);
+  const bezel = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.06, 48), M.pad); bezel.position.set(-10.4, 1.22, 0); src.add(bezel);
+  const face = new THREE.Mesh(new THREE.CylinderGeometry(0.86, 0.86, 0.08, 48), new THREE.MeshStandardMaterial({ color:'#0c1117', roughness:0.6 }));
+  face.position.set(-10.4, 1.24, 0); src.add(face);
+  [-1.2, 1.2].forEach((z, i) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.4, 20), i ? M.black : M.red);
+    post.rotation.z = Math.PI/2; post.position.set(-9.15, 0.22, z); post.castShadow = true; src.add(post);
+  });
+}
+const phasor = new THREE.Group(); phasor.position.set(-10.4, 1.3, 0); scene.add(phasor);
+const arrowMat = new THREE.MeshBasicMaterial({ color:'#ffe0a3', transparent:true });
+const arrow = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.03, 0.07), arrowMat); arrow.position.x = 0.36; phasor.add(arrow);
+const arrowTip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.2, 16), arrowMat); arrowTip.rotation.z = -Math.PI/2; arrowTip.position.x = 0.78; phasor.add(arrowTip);
+const blurMat = new THREE.MeshBasicMaterial({ color:'#c7b6ff', transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide });
+const blurDisc = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.84, 48), blurMat); blurDisc.rotation.x = -Math.PI/2; blurDisc.position.set(-10.4, 1.29, 0); scene.add(blurDisc);
+
+/* transformer core */
+const coreGroup = new THREE.Group(); scene.add(coreGroup);
+[[-6,1.85,0,0.5,3.4,0.5],[-3,1.85,0,0.5,3.4,0.5],[-4.5,3.3,0,3.5,0.5,0.5],[-4.5,0.4,0,3.5,0.5,0.5]].forEach(b => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(b[3], b[4], b[5]), M.core);
+  m.position.set(b[0], b[1], b[2]); m.castShadow = true; m.receiveShadow = true; coreGroup.add(m);
+});
+// lamination lines
+{
+  const lamMat = new THREE.MeshBasicMaterial({ color:'#2b313a' });
+  for (let i = -2; i <= 2; i++){
+    const l = new THREE.Mesh(new THREE.BoxGeometry(3.52, 0.52, 0.012), lamMat);
+    l.position.set(-4.5, 3.3, i*0.1); coreGroup.add(l);
+    const l2 = l.clone(); l2.position.y = 0.4; coreGroup.add(l2);
+  }
+}
+
+/* diodes */
+const diodes = {};
+['D1','D2','D3','D4'].forEach(name => {
+  const P = pathBy[name];
+  const a = P.pts[0], b = P.pts[P.pts.length-1];
+  const dir = new THREE.Vector3().subVectors(b, a).normalize();
+  const g = new THREE.Group();
+  g.position.copy(a).lerp(b, 0.5);
+  g.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.8, 24), M.diode); body.castShadow = true; g.add(body);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.175, 0.12, 24), M.band); band.position.y = 0.27; g.add(band);
+  const glowMat = new THREE.MeshBasicMaterial({ color: (name === 'D1' || name === 'D3') ? COL.amber : COL.cyan, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false });
+  const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.95, 24), glowMat); g.add(glow);
+  scene.add(g);
+  diodes[name] = { g, glowMat, lp:0 };
+});
+
+/* filter capacitor */
+const capGroup = new THREE.Group(); capGroup.position.set(8, 0, 0.55); scene.add(capGroup);
+{
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.4, 40), M.capBody); body.position.y = 0.72; body.castShadow = true; capGroup.add(body);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.47, 0.05, 40), M.capTop); top.position.y = 1.43; capGroup.add(top);
+  const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.505, 0.505, 1.36, 40, 1, true, Math.PI*0.3, Math.PI*0.4), new THREE.MeshStandardMaterial({ color:'#c9d3e6', roughness:0.5, side:THREE.DoubleSide }));
+  stripe.position.y = 0.72; capGroup.add(stripe);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.4, 20, 1, true), new THREE.MeshStandardMaterial({ color:'#3a4656', transparent:true, opacity:0.35, side:THREE.DoubleSide }));
+  tube.position.set(0.85, 0.72, 0); capGroup.add(tube);
+}
+const chargeMat = new THREE.MeshBasicMaterial({ color:COL.green });
+const chargeBar = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1, 16), chargeMat);
+chargeBar.position.set(0.85, 0.02, 0); capGroup.add(chargeBar);
+
+/* lamp */
+const lampGroup = new THREE.Group(); lampGroup.position.set(11, 0, 0); scene.add(lampGroup);
+const bulbMat = new THREE.MeshStandardMaterial({ color:'#fff3d6', transparent:true, opacity:0.22, roughness:0.1, emissive:'#ffcc77', emissiveIntensity:0, depthWrite:false });
+{
+  const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.6, 28), M.brass); sock.position.y = 0.3; sock.castShadow = true; lampGroup.add(sock);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.52, 32, 24), bulbMat); bulb.position.y = 1.18; bulb.renderOrder = 2; lampGroup.add(bulb);
+}
+const lampLight = new THREE.PointLight('#ffcf7a', 0, 9, 2); lampLight.position.set(11, 1.25, 0); scene.add(lampLight);
+
+/* particles */
+function radialTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'); const gr = g.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.25,'rgba(255,255,255,0.85)'); gr.addColorStop(0.6,'rgba(255,255,255,0.18)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0,0,64,64);
+  const t = new THREE.CanvasTexture(c); return t;
+}
+const dotTex = radialTexture();
+let total = 0; paths.forEach(P => { P.start = total; total += P.n; });
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(total*3), pCol = new Float32Array(total*3);
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+const pMat = new THREE.PointsMaterial({ size:0.36, map:dotTex, vertexColors:true, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
+const points = new THREE.Points(pGeo, pMat); points.frustumCulled = false; points.renderOrder = 3; scene.add(points);
+
+const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map:dotTex, color:'#ffc766', transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0 }));
+halo.position.set(11, 1.22, 0); halo.renderOrder = 4; scene.add(halo);
+
+/* labels and silkscreen (drawn once fonts are ready) */
+function makeLabel(text, color, h){
+  const c = document.createElement('canvas'), font = '700 78px "Barlow Condensed","Arial Narrow",sans-serif';
+  let g = c.getContext('2d'); g.font = font;
+  const tw = Math.ceil(g.measureText(text).width) + 40; c.width = Math.max(128, tw); c.height = 128;
+  g = c.getContext('2d'); g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 10; g.strokeStyle = 'rgba(5,8,12,0.85)'; g.strokeText(text, c.width/2, 66);
+  g.fillStyle = color; g.fillText(text, c.width/2, 66);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:t, transparent:true, depthWrite:false }));
+  s.scale.set(h*c.width/128, h, 1); s.renderOrder = 5; return s;
+}
+function drawBoard(){
+  const g = boardCanvas.getContext('2d'), W = 2600, H = 1000;
+  const X = x => (x + 13)*100, Z = z => (z + 5)*100;
+  g.fillStyle = '#111921'; g.fillRect(0,0,W,H);
+  for (let i = 0; i <= W; i += 50){ g.strokeStyle = i % 100 ? '#141d26' : '#18222d'; g.lineWidth = 2; g.beginPath(); g.moveTo(i,0); g.lineTo(i,H); g.stroke(); }
+  for (let j = 0; j <= H; j += 50){ g.strokeStyle = j % 100 ? '#141d26' : '#18222d'; g.lineWidth = 2; g.beginPath(); g.moveTo(0,j); g.lineTo(W,j); g.stroke(); }
+  const regions = [
+    { x0:-12.7, x1:-8.5, t:'AC SUPPLY', s:'230 V~ mains · 0.2–60 Hz' },
+    { x0:-8.2, x1:-0.9, t:'STEP-DOWN TRANSFORMER', s:'230 V → 12 V rms · Vpk ≈ 17 V' },
+    { x0:-0.5, x1:5.4, t:'BRIDGE RECTIFIER', s:'4 × 1N4007 · 2 × 0.7 V drop' },
+    { x0:5.7, x1:9.5, t:'FILTER', s:'electrolytic C, 25 V' },
+    { x0:9.8, x1:12.7, t:'LOAD', s:'lamp, R_L' }
+  ];
+  regions.forEach(r => {
+    g.setLineDash([18,12]); g.strokeStyle = '#3a4a5c'; g.lineWidth = 3;
+    g.strokeRect(X(r.x0), Z(-4.75), X(r.x1)-X(r.x0), Z(4.7)-Z(-4.75));
+    g.setLineDash([]);
+    g.fillStyle = '#e2e9f1'; g.font = '600 44px "Barlow Condensed","Arial Narrow",sans-serif'; g.textBaseline = 'alphabetic';
+    g.fillText(r.t, X(r.x0) + 22, Z(4.12));
+    g.fillStyle = '#8796a8'; g.font = '400 23px "JetBrains Mono",monospace';
+    g.fillText(r.s, X(r.x0) + 22, Z(4.48));
+  });
+  g.fillStyle = '#e2e9f1'; g.font = '600 46px "Barlow Condensed","Arial Narrow",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('A', X(-1.15), Z(-2.45)); g.fillText('B', X(-1.15), Z(2.45));
+  g.fillStyle = '#ffb43b'; g.fillText('+ DC', X(6.75), Z(-2.95));
+  g.fillStyle = '#9fb0c4'; g.fillText('− DC', X(6.75), Z(3.05));
+  g.fillStyle = '#8796a8'; g.font = '400 22px "JetBrains Mono",monospace';
+  g.fillText('PRIMARY', X(-6), Z(1.6)); g.fillText('SECONDARY', X(-3), Z(1.6));
+  g.fillText('jumper', X(1.3), Z(2.55));
+  // diode symbols, offset outward from the bridge centre
+  const sym = (a, b, label) => {
+    const mx = (a[0]+b[0])/2, mz = (a[2]+b[2])/2;
+    let dx = b[0]-a[0], dz = b[2]-a[2]; const L = Math.hypot(dx, dz); dx /= L; dz /= L;
+    let nx = -dz, nz = dx; if ((mx + nx - 2.5)**2 + (mz + nz)**2 < (mx - 2.5)**2 + mz**2){ nx = -nx; nz = -nz; }
+    const cx = X(mx + nx*0.55), cz = Z(mz + nz*0.55);
+    g.save(); g.translate(cx, cz); g.rotate(Math.atan2(dz, dx));
+    g.strokeStyle = '#d7dee7'; g.fillStyle = '#d7dee7'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(-34,0); g.lineTo(-14,0); g.moveTo(14,0); g.lineTo(34,0); g.stroke();
+    g.beginPath(); g.moveTo(-14,-16); g.lineTo(-14,16); g.lineTo(12,0); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(14,-17); g.lineTo(14,17); g.stroke();
+    g.restore();
+  };
+  sym(N1, PLUS); sym(N2, PLUS); sym(MINUS, N2); sym(MINUS, N1);
+  // capacitor symbol
+  g.save(); g.translate(X(7.0), Z(1.5)); g.strokeStyle = '#d7dee7'; g.lineWidth = 4;
+  g.beginPath(); g.moveTo(-30,-8); g.lineTo(30,-8); g.stroke();
+  g.beginPath(); g.moveTo(-30,8); g.quadraticCurveTo(0,20,30,8); g.stroke();
+  g.beginPath(); g.moveTo(0,-30); g.lineTo(0,-8); g.moveTo(0,12); g.lineTo(0,32); g.stroke();
+  g.fillStyle = '#d7dee7'; g.font = '600 26px "JetBrains Mono",monospace'; g.fillText('+', -40, -24); g.fillText('C', 46, 2);
+  g.restore();
+  // lamp symbol
+  g.save(); g.translate(X(12.15), Z(1.9)); g.strokeStyle = '#d7dee7'; g.lineWidth = 4;
+  g.beginPath(); g.arc(0,0,22,0,Math.PI*2); g.stroke();
+  g.beginPath(); g.moveTo(-15,-15); g.lineTo(15,15); g.moveTo(15,-15); g.lineTo(-15,15); g.stroke();
+  g.restore();
+  g.fillStyle = '#6f7f92'; g.font = '400 21px "JetBrains Mono",monospace'; g.textAlign = 'left';
+  g.fillText('Diode arrow = direction conventional current may pass', X(-0.3), Z(-4.45));
+  boardTex.needsUpdate = true;
+}
+function addLabels(){
+  ['D1','D2','D3','D4'].forEach(n => {
+    const s = makeLabel(n, n === 'D1' || n === 'D3' ? '#ffcf80' : '#8fe3ff', 0.42);
+    s.position.copy(diodes[n].g.position); s.position.y += 0.62; diodes[n].label = s; scene.add(s);
+  });
+  const add = (t, c, h, x, y, z) => { const s = makeLabel(t, c, h); s.position.set(x, y, z); scene.add(s); return s; };
+  add('~ 230 V', '#e2e9f1', 0.5, -10.4, 2.0, 0);
+  add('Np = 230 t', '#9fb0c4', 0.34, -6, 4.05, 0);
+  add('Ns = 12 t', '#9fb0c4', 0.34, -3, 4.05, 0);
+  add('C', '#e2e9f1', 0.45, 8, 2.05, 0.55);
+  add('LAMP', '#e2e9f1', 0.4, 11, 2.15, 0);
+  add('+', '#ffb43b', 0.5, 4.95, 0.65, -0.35);
+  add('−', '#9fb0c4', 0.5, 0.05, 0.65, -0.35);
+}
+
+/* ---------------- visual update ---------------- */
+const tmpV = new THREE.Vector3(), tmpC = new THREE.Color(), baseC = new THREE.Color();
+let fVis = S.f, lampB = 0;
+
+function applyTopology(){
+  const half = S.mode === 'half';
+  ['D2','D4'].forEach(n => { diodes[n].g.visible = !half; pathBy[n].mesh.visible = !half; pathBy[n].active = !half; if (diodes[n].label) diodes[n].label.visible = !half; });
+  diodes.D3.g.visible = !half; if (diodes.D3.label) diodes.D3.label.visible = !half;
+  capGroup.visible = S.cap; pathBy.CAP.mesh.visible = S.cap; pathBy.CAP.active = S.cap;
+  $('#cD2').classList.toggle('na', half); $('#cD4').classList.toggle('na', half); $('#cD3').classList.toggle('na', half);
+  $('#cval').disabled = !S.cap;
+}
+
+function pathColor(P, hb){
+  const n = P.name, Iv = I[n] || 0, full = S.mode === 'full', pos = vs >= 0;
+  let target = COL.lav;
+  switch (n){
+    case 'PRI': case 'PRI_INT': case 'SEC': baseC.copy(Iv >= 0 ? COL.amber : COL.cyan); break;
+    case 'D1': case 'D3': baseC.copy(COL.amber); target = COL.amber; break;
+    case 'D2': case 'D4': baseC.copy(COL.cyan); target = COL.cyan; break;
+    case 'RP1': case 'RN1': baseC.copy(full ? (pos ? COL.amber : COL.cyan) : COL.amber); target = full ? COL.lav : COL.amber; break;
+    case 'CAP': baseC.copy(Iv >= 0 ? (full ? (pos ? COL.amber : COL.cyan) : COL.amber) : COL.green); target = COL.green; break;
+    default: // load side
+      if (S.cap && ib < iL*0.5) baseC.copy(COL.green);
+      else baseC.copy(full ? (pos ? COL.amber : COL.cyan) : COL.amber);
+      target = S.cap ? COL.green : (full ? COL.lav : COL.amber);
+  }
+  return P.col.copy(baseC).lerp(target, hb);
+}
+
+function updateVisuals(realDt, simDt){
+  fVis = S.f * S.ts;
+  const hb = smooth(3, 10, fVis);
+  const dir = S.electron ? -1 : 1;
+  for (const P of paths){
+    const avg = simDt > 0 ? P.sumAbs / simDt : 0; P.sumAbs = 0;
+    const target = P.active ? Math.min(1, avg/IREF) : 0;
+    P.bright += (target - P.bright) * Math.min(1, realDt/0.08);
+    const k = P.active ? 0.14 + 0.86*P.bright : 0;
+    const c = pathColor(P, hb);
+    const r = c.r*k, g = c.g*k, b = c.b*k;
+    let off = P.offset % P.len; if (off < 0) off += P.len;
+    for (let i = 0; i < P.n; i++){
+      const idx = (P.start + i)*3;
+      let s = i*P.sp + off; if (s >= P.len) s -= P.len;
+      pointAt(P, s, tmpV);
+      pPos[idx] = tmpV.x; pPos[idx+1] = tmpV.y; pPos[idx+2] = tmpV.z;
+      pCol[idx] = r; pCol[idx+1] = g; pCol[idx+2] = b;
+    }
+  }
+  pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true;
+
+  for (const n in diodes){ diodes[n].glowMat.opacity = 0.75*diodes[n].lp; }
+
+  bulbMat.emissiveIntensity = 1.6*lampB;
+  lampLight.intensity = 3.2*lampB;
+  halo.material.opacity = Math.min(1, lampB*1.1);
+  const hs = 0.6 + 2.6*lampB; halo.scale.set(hs, hs, 1);
+
+  const flux = -Math.cos(phi);
+  tmpC.copy(flux >= 0 ? COL.amber : COL.cyan).lerp(COL.lav, hb);
+  const fi = (1-hb)*Math.abs(flux)*0.32 + hb*0.16;
+  M.core.emissive.copy(tmpC).multiplyScalar(fi);
+
+  phasor.rotation.y = -phi;
+  const blur = smooth(1.5, 5, fVis);
+  arrowMat.opacity = 1 - blur; blurMat.opacity = 0.55*blur;
+
+  chargeBar.scale.y = Math.max(0.001, Vc/VP*1.38);
+  chargeBar.position.y = 0.02 + chargeBar.scale.y/2;
+}
+
+/* ---------------- oscilloscope ---------------- */
+const sc = $('#scope'), sg = sc.getContext('2d');
+function sizeScope(){
+  const r = sc.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2);
+  sc.width = Math.max(1, Math.round(r.width*d)); sc.height = Math.max(1, Math.round(r.height*d)); sc._d = d;
+}
+function fmtTime(s){ return s >= 1 ? s.toFixed(2) + ' s' : s >= 0.01 ? (s*1000).toFixed(1) + ' ms' : (s*1000).toFixed(2) + ' ms'; }
+const xs = new Float32Array(BUF), v1 = new Float32Array(BUF), v2 = new Float32Array(BUF), v3 = new Float32Array(BUF);
+const stats = { avg:0, min:0, max:0, n:0 };
+function drawScope(){
+  const d = sc._d || 1, w = sc.width, h = sc.height;
+  const L = 46*d, R = 12*d, T = 30*d, B = 24*d, pw = w - L - R, ph = h - T - B;
+  sg.fillStyle = '#070a0e'; sg.fillRect(0,0,w,h);
+  sg.lineWidth = 1*d;
+  for (let i = 0; i <= 10; i++){ const x = L + pw*i/10; sg.strokeStyle = i === 0 || i === 10 ? '#263240' : '#141c25'; sg.beginPath(); sg.moveTo(x, T); sg.lineTo(x, T+ph); sg.stroke(); }
+  for (let j = 0; j <= 8; j++){ const y = T + ph*j/8; sg.strokeStyle = j === 4 ? '#2f3d4d' : (j === 0 || j === 8 ? '#263240' : '#141c25'); sg.beginPath(); sg.moveTo(L, y); sg.lineTo(L+pw, y); sg.stroke(); }
+  const yOf = v => T + ph/2 - v/20*(ph/2);
+  sg.fillStyle = '#6b7a8c'; sg.font = (10.5*d) + 'px "JetBrains Mono",monospace'; sg.textAlign = 'right'; sg.textBaseline = 'middle';
+  [20,10,0,-10,-20].forEach(v => sg.fillText((v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v) + ' V', L - 6*d, yOf(v)));
+
+  const W = CYCLES / S.f, t0 = simT - W;
+  let n = 0, sum = 0, mn = 1e9, mx = -1e9, i = (bIdx - 1 + BUF) % BUF;
+  for (let c = 0; c < bCount; c++){
+    const t = bT[i]; if (t < t0) break;
+    xs[n] = L + (t - t0)/W*pw; v1[n] = yOf(bVs[i]); v2[n] = yOf(bRect[i]); v3[n] = yOf(bOut[i]);
+    sum += bOut[i]; if (bOut[i] < mn) mn = bOut[i]; if (bOut[i] > mx) mx = bOut[i];
+    n++; i = (i - 1 + BUF) % BUF;
+  }
+  stats.n = n; if (n){ stats.avg = sum/n; stats.min = mn; stats.max = mx; }
+  const line = (arr, color, width, dash) => {
+    if (n < 2) return;
+    sg.strokeStyle = color; sg.lineWidth = width*d; sg.setLineDash(dash ? dash.map(x => x*d) : []);
+    sg.beginPath(); sg.moveTo(xs[0], arr[0]); for (let k = 1; k < n; k++) sg.lineTo(xs[k], arr[k]); sg.stroke(); sg.setLineDash([]);
+  };
+  sg.save(); sg.beginPath(); sg.rect(L, T, pw, ph); sg.clip();
+  const zero = yOf(0);
+  sg.save(); sg.beginPath(); sg.rect(L, T, pw, zero - T); sg.clip(); line(v1, '#ffb43b', 1.8); sg.restore();
+  sg.save(); sg.beginPath(); sg.rect(L, zero, pw, T + ph - zero); sg.clip(); line(v1, '#3fd0ff', 1.8); sg.restore();
+  if (S.cap) line(v2, '#8b97a6', 1.3, [5,4]);
+  sg.shadowColor = '#6dff9a'; sg.shadowBlur = 6*d; line(v3, '#6dff9a', 2.4); sg.shadowBlur = 0;
+  if (n){ sg.fillStyle = '#ffffff'; sg.beginPath(); sg.arc(xs[0], v3[0], 3*d, 0, Math.PI*2); sg.fill(); }
+  sg.restore();
+
+  // header legend
+  sg.textAlign = 'left'; sg.textBaseline = 'middle'; sg.font = (11.5*d) + 'px "IBM Plex Sans",sans-serif';
+  let x = L; const y = 15*d;
+  const item = (draw, text) => { draw(x, y); x += 24*d; sg.fillStyle = '#c9d2dd'; sg.fillText(text, x, y); x += sg.measureText(text).width + 18*d; };
+  item((x0,y0) => { sg.strokeStyle = '#ffb43b'; sg.lineWidth = 2*d; sg.beginPath(); sg.moveTo(x0,y0); sg.lineTo(x0+9*d,y0); sg.stroke(); sg.strokeStyle = '#3fd0ff'; sg.beginPath(); sg.moveTo(x0+9*d,y0); sg.lineTo(x0+18*d,y0); sg.stroke(); }, 'CH1  Vs, AC input');
+  if (S.cap) item((x0,y0) => { sg.strokeStyle = '#8b97a6'; sg.lineWidth = 1.5*d; sg.setLineDash([4*d,3*d]); sg.beginPath(); sg.moveTo(x0,y0); sg.lineTo(x0+18*d,y0); sg.stroke(); sg.setLineDash([]); }, 'Rectified, before C');
+  if (x < w - 160*d) item((x0,y0) => { sg.strokeStyle = '#6dff9a'; sg.lineWidth = 2.5*d; sg.beginPath(); sg.moveTo(x0,y0); sg.lineTo(x0+18*d,y0); sg.stroke(); }, 'CH2  Vout across load');
+  sg.fillStyle = '#6b7a8c'; sg.font = (10.5*d) + 'px "JetBrains Mono",monospace'; sg.textBaseline = 'middle';
+  sg.textAlign = 'left'; sg.fillText('5 V/div', L, h - 11*d);
+  sg.textAlign = 'right'; sg.fillText(fmtTime(W/10) + '/div  ·  ' + CYCLES + ' cycles shown', L + pw, h - 11*d);
+}
+
+/* ---------------- UI ---------------- */
+let uiDirty = true, uiClock = 0;
+const freqEl = $('#freq');
+const fToSlider = f => Math.round(Math.log(f/F_MIN)/Math.log(F_SLIDER_MAX/F_MIN)*1000);
+const sliderToF = v => F_MIN*Math.pow(F_SLIDER_MAX/F_MIN, v/1000);
+const fmtF = f => f < 10 ? f.toFixed(2) : f.toFixed(1);
+const fmtPeriod = f => { const T = 1/f; return T >= 1 ? T.toFixed(2) + ' s' : (T*1000).toFixed(T < 0.1 ? 1 : 0) + ' ms'; };
+
+function setSeg(key, val){
+  document.querySelectorAll('.seg[data-key="' + key + '"] button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === String(val))));
+}
+document.querySelectorAll('.seg').forEach(seg => {
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const key = seg.dataset.key, v = b.dataset.v;
+    if (key === 'mode') S.mode = v;
+    else if (key === 'cap'){ S.cap = v === '1'; if (S.cap) Vc = vload; }
+    else if (key === 'ts') S.ts = parseFloat(v);
+    else if (key === 'electron'){ S.electron = v === '1'; $('#flowNote').textContent = S.electron ? 'Dots show electron flow (− → +)' : 'Dots show conventional current (+ → −)'; }
+    else if (key === 'fEnd'){ S.fEnd = parseFloat(v); if (S.auto){ S.rampT = S.rampDur*Math.log(S.f/F_MIN)/Math.log(S.fEnd/F_MIN); } }
+    setSeg(key, v); applyTopology(); uiDirty = true;
+  });
+});
+freqEl.addEventListener('input', () => { S.auto = false; S.f = sliderToF(+freqEl.value); uiDirty = true; });
+$('#cval').addEventListener('input', e => { S.C = C_OPTS[+e.target.value]*1e-6; uiDirty = true; });
+$('#rval').addEventListener('input', e => { S.R = R_OPTS[+e.target.value]; uiDirty = true; });
+$('#play').addEventListener('click', () => { S.playing = !S.playing; uiDirty = true; });
+$('#restart').addEventListener('click', () => { S.auto = true; S.rampT = 0; S.f = F_MIN; phi = 0; Vc = 0; bCount = 0; lastRec = -1; S.playing = true; uiDirty = true; });
+$('#resetView').addEventListener('click', frameCamera);
+document.addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|BUTTON/.test(document.activeElement.tagName)){ e.preventDefault(); S.playing = !S.playing; uiDirty = true; } });
+
+function describe(){
+  const half = S.mode === 'half', hb = smooth(3, 10, fVis);
+  if (hb > 0.5){
+    const fr = half ? S.f : 2*S.f;
+    if (S.cap) return { c:'var(--green)', t:'Steady DC from ' + fmtF(S.f) + ' Hz AC',
+      d:'At this speed the diodes conduct in short pulses ' + Math.round(fr) + ' times per second, only near each peak. Between pulses the capacitor carries the load, so the lamp glows steadily. Slow playback to 1/50 × to watch the pulses.' };
+    return { c:'var(--lav)', t:'Pulsating DC at ' + Math.round(fr) + ' Hz',
+      d:'Without a capacitor the load voltage still falls to zero ' + Math.round(fr) + ' times per second. Current always flows one way through the lamp, but it is not smooth DC yet. Connect the capacitor to fill the gaps.' };
+  }
+  const pos = vs >= 0;
+  if (ib > 1e-4){
+    if (half) return { c:'var(--amber)', t:'Positive half-cycle · D1 conducts', d:'Terminal A is ' + vs.toFixed(1) + ' V above B. D1 is forward-biased, so current flows A → D1 → lamp → B.' + (S.cap ? ' Part of it charges the capacitor.' : '') };
+    return pos
+      ? { c:'var(--amber)', t:'Positive half-cycle · D1 and D3 conduct', d:'A is ' + vs.toFixed(1) + ' V above B. Current flows A → D1 → + rail → lamp → − rail → D3 → B. D2 and D4 are reverse-biased.' + (S.cap ? ' The capacitor charges toward the peak.' : '') }
+      : { c:'var(--cyan)', t:'Negative half-cycle · D2 and D4 conduct', d:'B is ' + (-vs).toFixed(1) + ' V above A. Current flows B → D2 → + rail → lamp → − rail → D4 → A. It still enters the lamp from the + rail.' + (S.cap ? ' The capacitor charges toward the peak.' : '') };
+  }
+  if (S.cap && Vc > 0.3) return { c:'var(--green)', t:'Diodes off · capacitor feeds the lamp',
+    d:'The rectified input (' + Math.max(0, vrect).toFixed(1) + ' V) is below the capacitor voltage (' + Vc.toFixed(1) + ' V), so every diode is reverse-biased. The capacitor discharges through the lamp until the next peak.' };
+  if (half && !pos) return { c:'#8b97a6', t:'Negative half-cycle · D1 blocks', d:'B is positive, so D1 is reverse-biased. No current reaches the lamp. Half-wave rectification wastes this half of the cycle.' };
+  return { c:'#8b97a6', t:'Near the zero crossing', d:'|Vs| = ' + Math.abs(vs).toFixed(2) + ' V is below the ' + (half ? '0.7' : '1.4') + ' V needed to turn the diodes on, so no current flows.' };
+}
+
+function updateUI(){
+  $('#fNum').textContent = fmtF(S.f);
+  $('#tNum').textContent = fmtPeriod(S.f);
+  $('#freqOut').textContent = fmtF(S.f) + ' Hz';
+  if (document.activeElement !== freqEl) freqEl.value = fToSlider(S.f);
+  const prog = Math.log(S.f/F_MIN)/Math.log(S.fEnd/F_MIN);
+  $('#sweepBar').style.width = (clamp(prog,0,1)*100).toFixed(1) + '%';
+  $('#sweepTxt').textContent = !S.playing ? 'Paused' : S.auto ? 'Sweeping' : 'Holding';
+  $('#autoNote').textContent = S.auto ? 'Auto sweep is running: 0.2 Hz rising to ' + S.fEnd + ' Hz over ' + S.rampDur + ' s. Moving the slider stops it.' : 'Auto sweep is off. Press Restart sweep to start again from 0.2 Hz.';
+  $('#play').textContent = S.playing ? 'Pause' : 'Play';
+  $('#cOut').textContent = Math.round(S.C*1e6) + ' µF';
+  $('#rOut').textContent = S.R + ' Ω';
+  $('#rVs').textContent = (vs >= 0 ? '+' : '−') + Math.abs(vs).toFixed(1);
+  $('#rVdc').textContent = stats.avg.toFixed(1);
+  $('#rRip').textContent = stats.n ? (stats.max - stats.min).toFixed(2) : '0.00';
+  const fr = S.mode === 'full' ? 2*S.f : S.f;
+  $('#rRf').textContent = fmtF(fr);
+  $('#rIl').textContent = Math.round(stats.avg/S.R*1000);
+  if (S.cap){
+    const pred = (stats.avg/S.R)/(fr*S.C);
+    if (pred > VP){ $('#rPred').textContent = '> Vpk'; $('#rPredU').textContent = 'C empties'; }
+    else { $('#rPred').textContent = pred.toFixed(2); $('#rPredU').textContent = 'V'; }
+  } else { $('#rPred').textContent = 'no C'; $('#rPredU').textContent = ''; }
+  const chips = { D1:'#ffb43b', D2:'#3fd0ff', D3:'#ffb43b', D4:'#3fd0ff' };
+  for (const n in chips){
+    const el = $('#c' + n), on = diodes[n].lp > 0.12 && !(S.mode === 'half' && n !== 'D1');
+    el.style.background = on ? chips[n] : ''; el.style.color = on ? '#10141a' : ''; el.style.borderColor = on ? chips[n] : '';
+  }
+  const dsc = describe();
+  $('#capTxt').textContent = dsc.t; $('#capDot').style.color = dsc.c; $('#nowTxt').textContent = dsc.d;
+}
+
+/* ---------------- loop ---------------- */
+function resize(){
+  const w = host.clientWidth, h = host.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+  sizeScope();
+}
+let firstFrame = true;
+const ro = new ResizeObserver(() => { resize(); if (firstFrame){ frameCamera(); } });
+ro.observe(host); ro.observe(sc);
+
+let last = performance.now();
+function tick(now){
+  const realDt = Math.min(0.05, (now - last)/1000); last = now;
+  let simDt = 0;
+  if (S.playing){
+    simDt = realDt*S.ts;
+    const steps = Math.max(1, Math.ceil(simDt/5e-5)), h = simDt/steps;
+    const dir = S.electron ? -1 : 1;
+    for (let k = 0; k < steps; k++){
+      physics(h);
+      branchCurrents();
+      for (const P of paths){
+        const Iv = I[P.name] || 0;
+        P.offset += clamp(Iv/IREF, -4, 4)*1.4*dir*h;
+        P.sumAbs += Math.abs(Iv)*h;
+      }
+      for (const n in diodes){ const d = diodes[n]; d.lp += (Math.min(1, (I[n] || 0)/IREF) - d.lp)*Math.min(1, h/0.03); }
+      lampB += (Math.pow(vload/(VP - 1.4), 2) - lampB)*Math.min(1, h/0.025);
+      record();
+    }
+  } else {
+    branchCurrents();
+    for (const P of paths) P.sumAbs = Math.abs(I[P.name] || 0)*realDt;
+    simDt = realDt;
+  }
+  updateVisuals(realDt, simDt);
+  controls.update();
+  renderer.render(scene, camera);
+  drawScope();
+  uiClock += realDt;
+  if (uiDirty || uiClock > 0.12){ uiClock = 0; uiDirty = false; updateUI(); }
+  firstFrame = false;
+  requestAnimationFrame(tick);
+}
+
+function start(){
+  drawBoard(); addLabels();
+  resize(); frameCamera(); applyTopology();
+  // prime the scene so the first still frame already shows the circuit mid-cycle
+  for (let k = 0; k < 2000; k++){ physics(5e-4); branchCurrents(); record(); }
+  updateUI();
+  requestAnimationFrame(t => { last = t; tick(t); });
+}
+const fontsReady = document.fonts && document.fonts.load
+  ? Promise.all([document.fonts.load('600 40px "Barlow Condensed"'), document.fonts.load('400 20px "JetBrains Mono"'), document.fonts.load('400 14px "IBM Plex Sans"')]).catch(() => {})
+  : Promise.resolve();
+Promise.race([fontsReady, new Promise(r => setTimeout(r, 1800))]).then(start);
+})();
+</script>
