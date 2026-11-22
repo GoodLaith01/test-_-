@@ -22,7 +22,8 @@ html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--b
 #eyebrow{font-family:"JetBrains Mono";font-weight:600;font-size:28px;letter-spacing:.14em;color:var(--amber)}
 #title{font-family:"Barlow Condensed";font-weight:700;font-size:86px;line-height:.98;margin-top:8px;text-wrap:balance}
 #body{font-size:32px;line-height:1.28;color:#c6d0db;margin-top:12px;max-width:940px}
-#view{position:absolute;left:0;top:600px;width:1080px;height:770px}
+#view{position:absolute;left:0;top:250px;width:1080px;height:1060px}
+#view{-webkit-mask-image:linear-gradient(transparent 0,#000 120px,#000 calc(100% - 90px),transparent 100%);mask-image:linear-gradient(transparent 0,#000 120px,#000 calc(100% - 90px),transparent 100%)}
 #view3d{position:absolute;inset:0}
 #view3d canvas{display:block}
 #fade{position:absolute;left:0;right:0;height:80px;pointer-events:none}
@@ -32,7 +33,7 @@ html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--b
 .meter .v small{font-size:28px;color:var(--muted);margin-left:6px}
 #meter2{left:auto;right:70px}
 #meter2 .v{color:var(--green)}
-.scopebox{position:absolute;left:60px;right:60px;top:1385px;height:300px;border-radius:18px;overflow:hidden;border:2px solid var(--line);background:#070a0e}
+.scopebox{position:absolute;left:60px;right:60px;top:1340px;height:330px;border-radius:18px;overflow:hidden;border:2px solid var(--line);background:#070a0e}
 #scope{display:block;width:100%;height:100%}
 .legend{position:absolute;left:70px;right:70px;top:1705px;display:flex;justify-content:center;gap:34px;font-size:27px;color:#c6d0db}
 .legend span{display:flex;align-items:center;gap:10px}
@@ -41,6 +42,8 @@ html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--b
 .eq{font-family:"JetBrains Mono";font-size:38px;background:#0f151c;border:2px solid var(--line);border-radius:14px;padding:16px 22px;margin-top:16px}
 .eq em{font-style:normal;color:var(--amber)}
 .hidden{display:none}
+/* text-free cut: only picture and soundtrack */
+.steps,#head,.meter,.legend{display:none!important}
 </style></head>
 <body>
 <div id="glow"></div>
@@ -49,7 +52,7 @@ html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--b
 <div id="view"><div id="view3d"></div></div>
 <div class="meter"><div class="k">SUPPLY</div><div class="v"><span id="mf">0.50</span><small>Hz</small></div></div>
 <div class="meter" id="meter2"><div class="k">V OUT</div><div class="v"><span id="mv">0.0</span><small>V</small></div></div>
-<div class="scopebox"><canvas id="scope" width="960" height="300"></canvas></div>
+<div class="scopebox"><canvas id="scope" width="960" height="330"></canvas></div>
 <div class="legend"><span><i style="color:var(--amber)"></i>A is +</span><span><i style="color:var(--cyan)"></i>B is +</span><span><i style="color:var(--green)"></i>from capacitor</span></div>
 <div class="hidden"><span id="cD2"></span><span id="cD3"></span><span id="cD4"></span><input id="cval" type="range"></div>
 
@@ -59,14 +62,15 @@ html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--b
 "use strict";
 const $ = s => document.querySelector(s);
 const reduceMotion = false;
+const TXT = false;
 /*__LAB_CORE__*/
 let uiDirty = false;
 S.auto = false; S.cap = false; S.mode = 'full'; S.f = 0.5; S.playing = true;
 sc._d = 1.55;
 renderer.setPixelRatio(1);
-renderer.setSize(1080, 770);
-camera.aspect = 1080/770; camera.updateProjectionMatrix();
-renderer.domElement.style.width = '1080px'; renderer.domElement.style.height = '770px';
+renderer.setSize(1080, 1060);
+camera.aspect = 1080/1060; camera.updateProjectionMatrix();
+renderer.domElement.style.width = '1080px'; renderer.domElement.style.height = '1060px';
 
 /* ---------- script ---------- */
 const FPS = 30, DUR = 50;
@@ -96,7 +100,7 @@ const SCENES = [
 const sceneAt = t => { let i = 0; while (i+1 < SCENES.length && SCENES[i+1].t0 <= t) i++; return i; };
 const ease = x => x<0?0:x>1?1:x*x*(3-2*x);
 function shotPose(name, el){
-  const s = SHOT[name], off = s.p.clone().sub(s.t);
+  const s = SHOT[name], off = s.p.clone().sub(s.t).multiplyScalar(1.3);
   off.applyAxisAngle(V3(0,1,0), s.drift*el);
   return { p:s.t.clone().add(off), t:s.t.clone() };
 }
@@ -146,7 +150,7 @@ window.renderAt = function(t){
   updateVisuals(1/FPS, Math.max(simDt, 1e-6));
   cameraAt(t);
   renderer.render(scene, camera);
-  drawScope();
+  drawScopeClean();
 
   // beat glow (120 BPM) during sections with drums
   const beatPh = ((t % 0.5) + 0.5) % 0.5;
@@ -176,9 +180,27 @@ window.renderAt = function(t){
   return true;
 };
 
+function drawScopeClean(){
+  const w = sc.width, h = sc.height, P = 22, pw = w - 2*P, ph = h - 2*P, T = P, Lx = P;
+  sg.fillStyle = '#070a0e'; sg.fillRect(0,0,w,h);
+  sg.lineWidth = 1;
+  for (let i = 0; i <= 10; i++){ const x = Lx + pw*i/10; sg.strokeStyle = '#141c25'; sg.beginPath(); sg.moveTo(x,T); sg.lineTo(x,T+ph); sg.stroke(); }
+  for (let j = 0; j <= 8; j++){ const y = T + ph*j/8; sg.strokeStyle = j === 4 ? '#2f3d4d' : '#141c25'; sg.beginPath(); sg.moveTo(Lx,y); sg.lineTo(Lx+pw,y); sg.stroke(); }
+  const yOf = v => T + ph/2 - v/20*(ph/2);
+  const W = CYCLES / S.f, t0 = simT - W;
+  let n = 0, i = (bIdx - 1 + BUF) % BUF;
+  for (let c = 0; c < bCount; c++){ const t = bT[i]; if (t < t0) break; xs[n] = Lx + (t - t0)/W*pw; v1[n] = yOf(bVs[i]); v2[n] = yOf(bRect[i]); v3[n] = yOf(bOut[i]); n++; i = (i - 1 + BUF) % BUF; }
+  const line = (arr, color, width, dash) => { if (n < 2) return; sg.strokeStyle = color; sg.lineWidth = width; sg.setLineDash(dash || []); sg.beginPath(); sg.moveTo(xs[0], arr[0]); for (let k = 1; k < n; k++) sg.lineTo(xs[k], arr[k]); sg.stroke(); sg.setLineDash([]); };
+  const zero = yOf(0);
+  sg.save(); sg.beginPath(); sg.rect(Lx, T, pw, zero - T); sg.clip(); line(v1, '#ffb43b', 3); sg.restore();
+  sg.save(); sg.beginPath(); sg.rect(Lx, zero, pw, T + ph - zero); sg.clip(); line(v1, '#3fd0ff', 3); sg.restore();
+  if (S.cap) line(v2, '#8b97a6', 2, [8,6]);
+  sg.shadowColor = '#6dff9a'; sg.shadowBlur = 10; line(v3, '#6dff9a', 4); sg.shadowBlur = 0;
+  if (n){ sg.fillStyle = '#fff'; sg.beginPath(); sg.arc(xs[0], v3[0], 5, 0, Math.PI*2); sg.fill(); }
+}
 window.ready = (async () => {
   await Promise.all([document.fonts.load('600 40px "Barlow Condensed"'), document.fonts.load('700 40px "Barlow Condensed"'), document.fonts.load('400 20px "JetBrains Mono"'), document.fonts.load('600 20px "JetBrains Mono"'), document.fonts.load('400 20px "IBM Plex Sans"'), document.fonts.load('600 20px "IBM Plex Sans"')]);
-  drawBoard(); addLabels(); applyTopology();
+  drawBoard(); applyTopology();
   capGroup.visible = false;
   window.renderAt(0);
   return true;
